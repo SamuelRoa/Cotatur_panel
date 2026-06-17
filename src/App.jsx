@@ -15,6 +15,7 @@ import { useRegion } from './RegionContext.jsx'
 import { destinosService } from './services/destinos'
 import { prestadoresService } from './services/prestadores'
 import { eventosService } from './services/eventos'
+import { rutasService } from './services/rutas'
 import { usuariosService } from './services/usuarios'
 
 function App() {
@@ -55,9 +56,24 @@ function App() {
 
   // Auth & Region state from context
   const { regions, regionId, regionName, setRegionId, role, loading: regionsLoading } = useRegion()
+
+  // Auto-login si hay token guardado y sigue siendo válido
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token')
+    if (!token) return
+    import('./services/auth').then(({ authService }) =>
+      authService.getMe().then(() => setCurrentView('dashboard')).catch(() => {
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('auth_user')
+      })
+    )
+  }, [])
   // Dashboard data from API
-  const [dashboardStats, setDashboardStats] = useState({ destinos: 0, prestadores: 0, eventos: 0, usuarios: 0 })
+  const [dashboardStats, setDashboardStats] = useState({ destinos: 0, prestadores: 0, eventos: 0, usuarios: 0, rutas: 0 })
   const [merchants, setMerchants] = useState([])
+  const [destinosList, setDestinosList] = useState([])
+  const [eventosList, setEventosList] = useState([])
+  const [rutasList, setRutasList] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   
   useEffect(() => {
@@ -68,19 +84,25 @@ function App() {
       destinosService.getAll(params).catch(() => ({ destinos: [], meta: { total: 0 } })),
       prestadoresService.getAll(params).catch(() => ({ prestadores: [], meta: { total: 0 } })),
       eventosService.getAll(params).catch(() => ({ eventos: [], meta: { total: 0 } })),
+      rutasService.getAll(params).catch(() => ({ rutas: [], meta: { total: 0 } })),
       usuariosService.getAll().catch(() => ({ usuarios: [], meta: { total: 0 } })),
-    ]).then(([destinosRes, prestadoresRes, eventosRes, usuariosRes]) => {
+    ]).then(([destinosRes, prestadoresRes, eventosRes, rutasRes, usuariosRes]) => {
       const destinos = destinosRes.destinos || destinosRes.data?.destinos || []
       const prestadores = prestadoresRes.prestadores || prestadoresRes.data?.prestadores || []
       const eventos = eventosRes.eventos || eventosRes.data?.eventos || []
+      const rutas = rutasRes.rutas || rutasRes.data?.rutas || []
       const usuarios = usuariosRes.usuarios || usuariosRes.data?.usuarios || []
       setDashboardStats({
         destinos: destinos.length,
         prestadores: prestadores.length,
         eventos: eventos.length,
+        rutas: rutas.length,
         usuarios: usuarios.length,
       })
       setMerchants(prestadores)
+      setDestinosList(destinos)
+      setEventosList(eventos)
+      setRutasList(rutas)
       setLoadingData(false)
     }).catch(() => setLoadingData(false))
   }, [regionId, regionsLoading])
@@ -213,6 +235,7 @@ function App() {
         email: merchantData.email,
         telefono: merchantData.phone,
         direccion: merchantData.address,
+        municipioId: merchantData.municipioId ? parseInt(merchantData.municipioId) : undefined,
         lat,
         lon,
       }
@@ -321,6 +344,45 @@ function App() {
   const validadosPct = Math.round(validados / totalStatus * 100)
   const rechazadosPct = Math.round(rechazados / totalStatus * 100)
   const pendientesPct = Math.round(pendientes / totalStatus * 100)
+
+  const totalRutasCount = dashboardStats.rutas
+
+  const destinosByRegion = {}
+  for (const d of destinosList) {
+    const rId = d.regionId
+    if (rId) {
+      const reg = regions.find(r => r.id === rId)
+      const name = reg ? reg.name : `Región ${rId}`
+      destinosByRegion[name] = (destinosByRegion[name] || 0) + 1
+    }
+  }
+  const maxDestinosRegion = Math.max(...Object.values(destinosByRegion), 1)
+
+  const rutasByRegion = {}
+  for (const r of rutasList) {
+    const firstDest = (r.destinos || [])[0]
+    const rId = firstDest?.regionId
+    if (rId) {
+      const reg = regions.find(reg => reg.id === rId)
+      const name = reg ? reg.name : `Región ${rId}`
+      rutasByRegion[name] = (rutasByRegion[name] || 0) + 1
+    }
+  }
+  const maxRutasRegion = Math.max(...Object.values(rutasByRegion), 1)
+
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const eventosEsteMes = eventosList.filter(e => {
+    const d = new Date(e.date)
+    return d >= startOfMonth && d < startOfNextMonth
+  }).length
+  const eventosProximos = eventosList.filter(e => new Date(e.date) >= startOfNextMonth).length
+  const eventosPasados = eventosList.filter(e => new Date(e.date) < startOfMonth).length
+  const totalEventos = eventosEsteMes + eventosProximos + eventosPasados || 1
+  const eventosEsteMesPct = Math.round(eventosEsteMes / totalEventos * 100)
+  const eventosProximosPct = Math.round(eventosProximos / totalEventos * 100)
+  const eventosPasadosPct = Math.round(eventosPasados / totalEventos * 100)
 
   return (
     <div style={{ width: '100%' }}>
@@ -1021,9 +1083,10 @@ function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Prestadores Registrados</span><span className="metric-value">{totalRegisteredCount.toLocaleString()}</span><span className="metric-trend green">▲ +12% este mes</span></div><div className="metric-icon-box green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg></div></div>
-                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Destinos Georreferenciados</span><span className="metric-value">{totalGeoreferencedCount}</span><span className="metric-trend blue">☉ 98% precisión GPS</span></div><div className="metric-icon-box blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" /></svg></div></div>
-                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Alertas Viales</span><span className="metric-value">{totalAlertsCount}</span><span className="metric-trend red">⚠ 5 críticas activas</span></div><div className="metric-icon-box red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg></div></div>
+                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Destinos Georreferenciados</span><span className="metric-value">{totalGeoreferencedCount}</span><span className="metric-trend blue">◉ coordenadas GPS</span></div><div className="metric-icon-box blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" /></svg></div></div>
+                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Prestadores Registrados</span><span className="metric-value">{totalRegisteredCount.toLocaleString()}</span><span className="metric-trend green">▲ registrados</span></div><div className="metric-icon-box green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg></div></div>
+                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Eventos Programados</span><span className="metric-value">{dashboardStats.eventos}</span><span className="metric-trend purple">● {eventosEsteMes} este mes</span></div><div className="metric-icon-box purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg></div></div>
+                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Rutas Turísticas</span><span className="metric-value">{totalRutasCount}</span><span className="metric-trend orange">⟐ {Object.keys(rutasByRegion).length} regiones</span></div><div className="metric-icon-box orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg></div></div>
                       </section>
                       <section className="charts-section">
                         <div className="chart-card"><h4 className="chart-title">Proveedores por Categoría</h4><div className="chart-bars">
@@ -1042,9 +1105,45 @@ function App() {
                             ))
                           )}
                         </div></div>
+                        <div className="chart-card"><h4 className="chart-title">Destinos por Región</h4><div className="chart-bars">
+                          {Object.entries(destinosByRegion).length === 0 ? (
+                            <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
+                          ) : (
+                            Object.entries(destinosByRegion).map(([reg, count]) => (
+                              <div key={reg} className="chart-bar-item">
+                                <span className="chart-bar-label">{reg}</span>
+                                <div className="chart-bar-track">
+                                  <div className="chart-bar-fill blue" style={{width: `${Math.round(count / maxDestinosRegion * 100)}%`}}>
+                                    <span>{count}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div></div>
+                        <div className="chart-card"><h4 className="chart-title">Rutas por Región</h4><div className="chart-bars">
+                          {Object.entries(rutasByRegion).length === 0 ? (
+                            <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
+                          ) : (
+                            Object.entries(rutasByRegion).map(([reg, count]) => (
+                              <div key={reg} className="chart-bar-item">
+                                <span className="chart-bar-label">{reg}</span>
+                                <div className="chart-bar-track">
+                                  <div className="chart-bar-fill orange" style={{width: `${Math.round(count / maxRutasRegion * 100)}%`}}>
+                                    <span>{count}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div></div>
                         <div className="chart-card"><h4 className="chart-title">Estado de Validaciones</h4><div className="chart-donut">
                           <div className="donut-ring"><svg viewBox="0 0 36 36" className="donut-svg"><path className="donut-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment green" strokeDasharray={`${validadosPct},${100 - validadosPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment red" strokeDasharray={`${rechazadosPct},${100 - rechazadosPct}`} strokeDashoffset={`${-validadosPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment yellow" strokeDasharray={`${pendientesPct},${100 - pendientesPct}`} strokeDashoffset={`${-(validadosPct + rechazadosPct)}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg><div className="donut-center">{merchants.length}</div></div>
                           <div className="donut-legend"><div className="legend-item"><span className="legend-dot green"></span>Validados: {validados}</div><div className="legend-item"><span className="legend-dot red"></span>Rechazados: {rechazados}</div><div className="legend-item"><span className="legend-dot yellow"></span>Pendientes: {pendientes}</div></div>
+                        </div></div>
+                        <div className="chart-card"><h4 className="chart-title">Eventos</h4><div className="chart-donut">
+                          <div className="donut-ring"><svg viewBox="0 0 36 36" className="donut-svg"><path className="donut-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment blue" strokeDasharray={`${eventosEsteMesPct},${100 - eventosEsteMesPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment orange" strokeDasharray={`${eventosProximosPct},${100 - eventosProximosPct}`} strokeDashoffset={`${-eventosEsteMesPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment gray" strokeDasharray={`${eventosPasadosPct},${100 - eventosPasadosPct}`} strokeDashoffset={`${-(eventosEsteMesPct + eventosProximosPct)}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg><div className="donut-center">{eventosList.length}</div></div>
+                          <div className="donut-legend"><div className="legend-item"><span className="legend-dot blue"></span>Este mes: {eventosEsteMes}</div><div className="legend-item"><span className="legend-dot orange"></span>Próximos: {eventosProximos}</div><div className="legend-item"><span className="legend-dot gray"></span>Pasados: {eventosPasados}</div></div>
                         </div></div>
                         <div className="chart-card chart-card-full"><h4 className="chart-title">Actividad Reciente</h4><div className="timeline-chart">
                           {merchants.length === 0 ? (

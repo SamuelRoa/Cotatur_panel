@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import RegionOverviewCard from './RegionOverviewCard.jsx'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
@@ -6,34 +6,42 @@ import { geoService } from '../services/geo'
 const tourismTypes = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
 const roadStatuses = ['Buena', 'Regular', 'Mala', 'En construcción']
 
+const emptyForm = () => ({ name: '', description: '', lat: '', lng: '', tourismType: 'Ecoturismo', roadStatus: 'Buena', regionId: '', estadoId: '', municipioId: '', parish: '' })
+
 export default function DestinosCRUD({ regionId = null, regionName = 'Visión Nacional' }) {
   const [destinos, setDestinos] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ name: '', description: '', lat: '', lng: '', tourismType: 'Ecoturismo', roadStatus: 'Buena', municipioId: '', parish: '' })
+  const [filterRegion, setFilterRegion] = useState(regionId || '')
+  const [form, setForm] = useState(emptyForm())
   const [detail, setDetail] = useState(null)
-  const [municipios, setMunicipios] = useState([])
+
+  const [regions, setRegions] = useState([])
 
   useEffect(() => {
-    geoService.getMunicipios().then((res) => {
-      const data = res.data || res
-      setMunicipios(data || [])
+    geoService.getRegiones().then((res) => {
+      setRegions(res.data || res || [])
     }).catch(() => {})
   }, [])
 
-  useEffect(() => {
+  const loadDestinos = useCallback(() => {
     setLoading(true)
     const params = {}
-    if (regionId) params.regionId = regionId
+    const rId = filterRegion || regionId
+    if (rId) params.regionId = rId
     destinosService.getAll(params)
       .then((res) => {
         setDestinos(res.destinos || [])
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [regionId])
+  }, [regionId, filterRegion])
+
+  useEffect(() => { loadDestinos() }, [loadDestinos])
+
+  const [geoError, setGeoError] = useState('')
 
   const openForm = (destino = null) => {
     if (destino) {
@@ -45,19 +53,31 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
         lng: String(destino.lng || ''),
         tourismType: destino.tourismType || 'Ecoturismo',
         roadStatus: destino.roadStatus || 'Buena',
-        municipioId: destino.municipalityId || '',
+        regionId: String(destino.regionId || ''),
+        estadoId: String(destino.estado || ''),
+        municipioId: String(destino.municipalityId || ''),
         parish: '',
       })
     } else {
       setEditing(null)
-      setForm({ name: '', description: '', lat: '', lng: '', tourismType: 'Ecoturismo', roadStatus: 'Buena', municipioId: '', parish: '' })
+      setForm(emptyForm())
     }
     setShowForm(true)
   }
 
   const handleSave = async (e) => {
     e.preventDefault()
+    setGeoError('')
     if (!form.name.trim() || !form.lat || !form.lng) return
+    const munId = parseInt(form.municipioId)
+    if (!munId || munId < 1) {
+      setGeoError('Debe ingresar un ID de municipio válido (1-4).')
+      return
+    }
+    if (!form.regionId) {
+      setGeoError('Seleccione una región.')
+      return
+    }
     try {
       const payload = {
         nombre: form.name,
@@ -66,21 +86,19 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
         lon: parseFloat(form.lng),
         vialidad: form.roadStatus,
         tipoTurismoId: tourismTypes.indexOf(form.tourismType) + 1,
-        municipioId: form.municipioId ? parseInt(form.municipioId) : undefined,
+        municipioId: munId,
       }
       if (editing) {
         await destinosService.update(editing, payload)
       } else {
         await destinosService.create(payload)
       }
-      const params = {}
-      if (regionId) params.regionId = regionId
-      const res = await destinosService.getAll(params)
-      setDestinos(res.destinos || [])
+      loadDestinos()
       setShowForm(false)
       setEditing(null)
+      setGeoError('')
     } catch (err) {
-      alert('Error al guardar: ' + err.message)
+      setGeoError(err.message)
     }
   }
 
@@ -98,8 +116,11 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
     !search ||
     (d.name || '').toLowerCase().includes(search.toLowerCase()) ||
     (d.municipality || '').toLowerCase().includes(search.toLowerCase()) ||
+    (d.estado || '').toLowerCase().includes(search.toLowerCase()) ||
     (d.tourismType || '').toLowerCase().includes(search.toLowerCase())
   )
+
+  const getRegionName = (rId) => regions.find(r => r.REGI_COD === rId)?.REGI_NOM || ''
 
   if (loading) {
     return <div className="module-container"><p className="module-subtitle">Cargando destinos...</p></div>
@@ -114,6 +135,10 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
         </div>
         <div className="module-header-actions">
           <input type="text" className="module-search" placeholder="Buscar destino..." value={search} onChange={e => setSearch(e.target.value)} />
+          <select className="module-filter-select" value={filterRegion} onChange={e => setFilterRegion(e.target.value)}>
+            <option value="">Todas las regiones</option>
+            {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}
+          </select>
           <button className="btn-module-primary" onClick={() => openForm()}>+ Nuevo Destino</button>
         </div>
       </div>
@@ -123,27 +148,33 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
           <RegionOverviewCard moduleKey="destinos" regionId={regionId} regionName={regionName} />
         ) : (
           filtered.map(d => (
-            <div key={d.id} className="destino-card" onClick={() => setDetail(d)}>
-              <div className="destino-card-header">
-                <span className={`road-badge ${(d.roadStatus || '').toLowerCase().replace(/\s+/g, '-')}`}>{d.roadStatus}</span>
-                <span className="tourism-tag">{d.tourismType}</span>
-              </div>
-              <h4 className="destino-card-title">{d.name}</h4>
-              <p className="destino-card-desc">{d.description}</p>
-              <div className="destino-card-coords">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
-                {d.lat ? `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}` : 'Sin coordenadas'}
-              </div>
-              <div className="destino-card-footer">
-                <span className="destino-municipio">{d.municipality || ''}</span>
-                <div className="destino-card-actions">
-                  <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); openForm(d) }} title="Editar">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                  </button>
-                  <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(d.id) }} title="Eliminar">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                  </button>
+            <div key={d.id} className="card-modern" onClick={() => setDetail(d)}>
+              <div className="card-header">
+                <div className="card-tags">
+                  <span className={`tag-road ${(d.roadStatus || '').toLowerCase().replace(/\s+/g, '-')}`}>{d.roadStatus}</span>
+                  <span className="tag-type">{d.tourismType}</span>
                 </div>
+                <span className="card-region-badge">{getRegionName(d.regionId)}</span>
+              </div>
+              <h4 className="card-title">{d.name}</h4>
+              <p className="card-desc">{d.description}</p>
+              <div className="card-meta">
+                <span className="card-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                  {d.estado}, {d.municipality}
+                </span>
+                <span className="card-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                  {d.lat ? `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}` : 'Sin coords'}
+                </span>
+              </div>
+              <div className="card-actions">
+                <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); openForm(d) }} title="Editar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                </button>
+                <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(d.id) }} title="Eliminar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                </button>
               </div>
             </div>
           ))
@@ -193,21 +224,32 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
                     </select>
                   </div>
                 </div>
+                <div className="form-section-title">Ubicación Geográfica</div>
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
-                    <label>Municipio</label>
-                    <select className="form-modal-select" value={form.municipioId} onChange={e => setForm(p => ({ ...p, municipioId: e.target.value }))}>
+                    <label>Región <span className="required-star">*</span></label>
+                    <select className="form-modal-select" value={form.regionId} onChange={e => setForm(p => ({ ...p, regionId: e.target.value }))}>
                       <option value="">Seleccione...</option>
-                      {municipios.map(m => (
-                        <option key={m.MUNI_COD || m.id} value={m.MUNI_COD || m.id}>{m.MUNI_NOM || m.name}</option>
-                      ))}
+                      {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}
                     </select>
                   </div>
                   <div className="form-modal-group flex-1">
-                    <label>Parroquia</label>
-                    <input type="text" className="form-modal-input" value={form.parish} onChange={e => setForm(p => ({ ...p, parish: e.target.value }))} />
+                    <label>Estado</label>
+                    <input type="text" className="form-modal-input" value={form.estadoId} onChange={e => setForm(p => ({ ...p, estadoId: e.target.value }))} placeholder="Ej: Táchira" />
                   </div>
                 </div>
+                <div className="form-row">
+                  <div className="form-modal-group flex-1">
+                    <label>ID Municipio <span className="required-star">*</span></label>
+                    <input type="number" min="1" max="4" className="form-modal-input" value={form.municipioId} onChange={e => setForm(p => ({ ...p, municipioId: e.target.value }))} placeholder="1=San Cristóbal, 2=San José, 3=Libertador, 4=Maneiro" />
+                    <small style={{ color: '#888', fontSize: '11px', display: 'block', marginTop: 4 }}>IDs válidos: 1 (Táchira), 2 (Táchira), 3 (Mérida), 4 (Nueva Esparta)</small>
+                  </div>
+                  <div className="form-modal-group flex-1">
+                    <label>Parroquia</label>
+                    <input type="text" className="form-modal-input" value={form.parish} onChange={e => setForm(p => ({ ...p, parish: e.target.value }))} placeholder="Opcional" />
+                  </div>
+                </div>
+                {geoError && <p style={{ color: '#e3342f', fontSize: 12, marginTop: 8 }}>{geoError}</p>}
               </div>
               <div className="modal-footer">
                 <button type="submit" className="btn-modal-action approve">{editing ? 'Actualizar' : 'Guardar'}</button>
@@ -230,7 +272,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
                 <div className="detail-row"><span className="detail-label">Descripción:</span><span className="detail-value">{detail.description}</span></div>
                 <div className="detail-row"><span className="detail-label">Coordenadas:</span><span className="detail-value">{detail.lat ? `${detail.lat}, ${detail.lng}` : 'N/A'}</span></div>
                 <div className="detail-row"><span className="detail-label">Tipo Turismo:</span><span className="detail-value">{detail.tourismType}</span></div>
-                <div className="detail-row"><span className="detail-label">Vía:</span><span className="detail-value"><span className={`road-badge ${(detail.roadStatus || '').toLowerCase().replace(/\s+/g, '-')}`}>{detail.roadStatus}</span></span></div>
+                <div className="detail-row"><span className="detail-label">Vía:</span><span className="detail-value"><span className={`tag-road ${(detail.roadStatus || '').toLowerCase().replace(/\s+/g, '-')}`}>{detail.roadStatus}</span></span></div>
+                <div className="detail-row"><span className="detail-label">Región:</span><span className="detail-value">{getRegionName(detail.regionId)}</span></div>
+                <div className="detail-row"><span className="detail-label">Estado:</span><span className="detail-value">{detail.estado}</span></div>
                 <div className="detail-row"><span className="detail-label">Municipio:</span><span className="detail-value">{detail.municipality}</span></div>
                 {detail.parish && <div className="detail-row"><span className="detail-label">Parroquia:</span><span className="detail-value">{detail.parish}</span></div>}
               </div>

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { geoService } from '../services/geo'
 
 const CATEGORIES = [
   { value: 'Alojamiento Turístico', label: 'Alojamiento Turístico', icon: '🏨' },
@@ -33,13 +34,31 @@ const INITIAL_DATA = {
   name: '', category: '', rif: '', description: '', email: '', phone: '',
   openTime: '08:00', closeTime: '17:00', openDays: ['lun', 'mar', 'mie', 'jue', 'vie'],
   address: '', coordinates: '', branches: 1, capacity: 0, services: [],
+  regionId: '', estadoId: '', municipioId: '',
   mainPhoto: null, gallery: [], logo: null, documents: [],
 }
 
-export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId = 'national', regionName = 'Visión Nacional' }) {
+export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: ctxRegionId, regionName = 'Visión Nacional' }) {
   const [step, setStep] = useState(1)
-  const [data, setData] = useState({ ...INITIAL_DATA, address: regionName })
+  const [data, setData] = useState({ ...INITIAL_DATA })
   const [errors, setErrors] = useState({})
+  const [regions, setRegions] = useState([])
+  const [estados, setEstados] = useState([])
+  const [municipios, setMunicipios] = useState([])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const regionParam = ctxRegionId ? { regionId: ctxRegionId } : {}
+    Promise.all([
+      geoService.getRegiones(),
+      geoService.getEstados(regionParam),
+      geoService.getMunicipios(),
+    ]).then(([regRes, estRes, munRes]) => {
+      setRegions(regRes.data || regRes || [])
+      setEstados(estRes.data || estRes || [])
+      setMunicipios(munRes.data || munRes || [])
+    }).catch(() => {})
+  }, [isOpen, ctxRegionId])
 
   if (!isOpen) return null
 
@@ -53,9 +72,7 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId =
     const checked = e.target.checked
     setData(prev => ({
       ...prev,
-      [field]: checked
-        ? [...prev[field], value]
-        : prev[field].filter(v => v !== value)
+      [field]: checked ? [...prev[field], value] : prev[field].filter(v => v !== value)
     }))
   }
 
@@ -91,6 +108,9 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId =
         errs.rif = 'Formato inválido (ej: J-12345678-9)'
     }
     if (step === 2) {
+      if (!data.regionId) errs.regionId = 'Seleccione una región'
+      if (!data.estadoId) errs.estadoId = 'Seleccione un estado'
+      if (!data.municipioId) errs.municipioId = 'Seleccione un municipio'
       if (!data.address.trim()) errs.address = 'La dirección es obligatoria'
       if (data.branches < 1) errs.branches = 'Debe tener al menos 1 sede'
     }
@@ -125,6 +145,9 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId =
     onClose()
   }
 
+  const filteredEstados = estados.filter(e => !data.regionId || e.ESTA_REGI === parseInt(data.regionId))
+  const filteredMunicipios = municipios.filter(m => !data.estadoId || m.MUNI_EST === parseInt(data.estadoId))
+
   return (
     <div className="modal-overlay" onClick={handleClose}>
       <div className="modal-content wizard-modal" onClick={e => e.stopPropagation()}>
@@ -141,7 +164,7 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId =
           <div className="wizard-connector" />
           <div className={`wizard-step-indicator ${step >= 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`} onClick={() => step > 2 && setStep(2)}>
             <div className="wizard-step-circle">{step > 2 ? '✓' : '2'}</div>
-            <div className="wizard-step-label">Detalle del Establecimiento</div>
+            <div className="wizard-step-label">Ubicación y Detalle</div>
           </div>
           <div className="wizard-connector" />
           <div className={`wizard-step-indicator ${step >= 3 ? 'active' : ''}`}>
@@ -191,16 +214,57 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId =
 
               <div className="form-modal-group">
                 <label>Descripción del Establecimiento</label>
-                <textarea className="form-modal-textarea" rows={3} placeholder="Breve descripción de los servicios y características del lugar..." value={data.description} onChange={set('description')} />
+                <textarea className="form-modal-textarea" rows={3} placeholder="Breve descripción de los servicios..." value={data.description} onChange={set('description')} />
               </div>
             </div>
           )}
 
           {step === 2 && (
             <div className="wizard-step-content">
-              <h4 className="wizard-step-title">Detalle del Establecimiento</h4>
-              <p className="wizard-step-desc">Información operativa y de infraestructura.</p>
+              <h4 className="wizard-step-title">Ubicación y Detalle</h4>
+              <p className="wizard-step-desc">Información geográfica y operativa.</p>
 
+              <div className="form-section-title">Ubicación Geográfica</div>
+              <div className="wizard-form-grid two-col">
+                <div className="form-modal-group">
+                  <label>Región *</label>
+                  <select className={`form-modal-select ${errors.regionId ? 'input-error' : ''}`} value={data.regionId} onChange={e => setData(p => ({ ...p, regionId: e.target.value, estadoId: '', municipioId: '' }))}>
+                    <option value="">Seleccione...</option>
+                    {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}
+                  </select>
+                  {errors.regionId && <span className="field-error">{errors.regionId}</span>}
+                </div>
+                <div className="form-modal-group">
+                  <label>Estado *</label>
+                  <select className={`form-modal-select ${errors.estadoId ? 'input-error' : ''}`} value={data.estadoId} onChange={e => setData(p => ({ ...p, estadoId: e.target.value, municipioId: '' }))}>
+                    <option value="">Seleccione...</option>
+                    {filteredEstados.map(e => <option key={e.ESTA_COD} value={e.ESTA_COD}>{e.ESTA_NOM}</option>)}
+                  </select>
+                  {errors.estadoId && <span className="field-error">{errors.estadoId}</span>}
+                </div>
+              </div>
+              <div className="wizard-form-grid two-col">
+                <div className="form-modal-group">
+                  <label>Municipio *</label>
+                  <select className={`form-modal-select ${errors.municipioId ? 'input-error' : ''}`} value={data.municipioId} onChange={set('municipioId')}>
+                    <option value="">Seleccione...</option>
+                    {filteredMunicipios.map(m => <option key={m.MUNI_COD} value={m.MUNI_COD}>{m.MUNI_NOM}</option>)}
+                  </select>
+                  {errors.municipioId && <span className="field-error">{errors.municipioId}</span>}
+                </div>
+                <div className="form-modal-group">
+                  <label>Dirección *</label>
+                  <input type="text" className={`form-modal-input ${errors.address ? 'input-error' : ''}`} placeholder="Calle, Nro, Sector" value={data.address} onChange={set('address')} />
+                  {errors.address && <span className="field-error">{errors.address}</span>}
+                </div>
+              </div>
+
+              <div className="form-modal-group">
+                <label>Coordenadas (Google Maps)</label>
+                <input type="text" className="form-modal-input" placeholder="7.7713° N, 72.2212° O" value={data.coordinates} onChange={set('coordinates')} />
+              </div>
+
+              <div className="form-section-title">Horarios</div>
               <div className="wizard-form-grid two-col">
                 <div className="form-modal-group">
                   <label>Hora de Apertura</label>
@@ -222,17 +286,6 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId =
                     </label>
                   ))}
                 </div>
-              </div>
-
-              <div className="form-modal-group">
-                <label>Dirección *</label>
-                <input type="text" className={`form-modal-input ${errors.address ? 'input-error' : ''}`} placeholder="Estado, Municipio, Parroquia, Calle, Nro" value={data.address} onChange={set('address')} />
-                {errors.address && <span className="field-error">{errors.address}</span>}
-              </div>
-
-              <div className="form-modal-group">
-                <label>Coordenadas (Google Maps)</label>
-                <input type="text" className="form-modal-input" placeholder="7.7713° N, 72.2212° O" value={data.coordinates} onChange={set('coordinates')} />
               </div>
 
               <div className="wizard-form-grid two-col">
@@ -343,19 +396,13 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId =
 
         <div className="modal-footer wizard-footer">
           {step > 1 && (
-            <button className="btn-modal-action cancel" onClick={handlePrev}>
-              ← Anterior
-            </button>
+            <button className="btn-modal-action cancel" onClick={handlePrev}>← Anterior</button>
           )}
           <div style={{ flex: 1 }} />
           {step < 3 ? (
-            <button className="btn-modal-action approve" onClick={handleNext}>
-              Siguiente →
-            </button>
+            <button className="btn-modal-action approve" onClick={handleNext}>Siguiente →</button>
           ) : (
-            <button className="btn-modal-action approve" onClick={handleSubmit}>
-              Guardar y Enviar
-            </button>
+            <button className="btn-modal-action approve" onClick={handleSubmit}>Guardar y Enviar</button>
           )}
         </div>
       </div>

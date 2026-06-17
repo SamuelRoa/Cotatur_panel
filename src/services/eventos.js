@@ -12,6 +12,8 @@ function mapEvento(e) {
     destinoId: e.EVEN_DI,
     destinoName: e.TM_DESTI?.DEST_NOM,
     municipality: e.TM_DESTI?.TM_MUNIC?.MUNI_NOM,
+    estado: e.TM_DESTI?.TM_MUNIC?.TM_ESTADO?.ESTA_NOM,
+    regionId: e.TM_DESTI?.TM_MUNIC?.TM_ESTADO?.ESTA_REGI,
     _raw: e,
   };
 }

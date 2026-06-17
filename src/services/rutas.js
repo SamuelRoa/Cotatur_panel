@@ -17,6 +17,9 @@ function mapRuta(r) {
       name: rd.TM_DESTI?.DEST_NOM,
       lat: rd.TM_DESTI?.TM_UBDES?.UBDE_LAT ? Number(rd.TM_DESTI.TM_UBDES.UBDE_LAT) : null,
       lng: rd.TM_DESTI?.TM_UBDES?.UBDE_LON ? Number(rd.TM_DESTI.TM_UBDES.UBDE_LON) : null,
+      municipio: rd.TM_DESTI?.TM_MUNIC?.MUNI_NOM,
+      estado: rd.TM_DESTI?.TM_MUNIC?.TM_ESTADO?.ESTA_NOM,
+      regionId: rd.TM_DESTI?.TM_MUNIC?.TM_ESTADO?.ESTA_REGI,
     })),
     _raw: r,
   };
