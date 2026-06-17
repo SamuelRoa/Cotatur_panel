@@ -1,71 +1,80 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import RegionOverviewCard from './RegionOverviewCard.jsx'
+import { contenidoService } from '../services/contenido'
 
-const initialPosts = [
-  { id: 1, title: 'Impulso al turismo sostenible', content: 'Plan de desarrollo turístico regional con capacitación a prestadores y promoción de rutas sostenibles.', type: 'noticia', date: '2026-05-20', published: true, destination: null, region: 'los_andes' },
-  { id: 2, title: 'Ficha: Parque Nacional El Ávila', content: 'Ficha oficial del destino. Ubicado en la cordillera de la Costa, ideal para senderismo y avistamiento de aves.', type: 'ficha', date: '2026-05-15', published: true, destination: 1, region: 'central' },
-  { id: 3, title: 'Comunicado: Nuevos horarios de atención', content: 'Se informa que los horarios de atención al público en oficinas regionales han sido extendidos.', type: 'comunicado', date: '2026-05-10', published: true, destination: null, region: 'los_andes' },
-  { id: 4, title: 'Ficha: Salto Ángel', content: 'Ficha oficial del destino, patrimonio natural de la humanidad.', type: 'ficha', date: '2026-04-28', published: false, destination: 3, region: 'amazonica' },
-  { id: 5, title: 'Ruta de los Páramos Andinos', content: 'Recorrido por los páramos más emblemáticos de Mérida y Táchira con guías especializados.', type: 'noticia', date: '2026-05-22', published: true, destination: null, region: 'los_andes' },
-  { id: 6, title: 'Ficha: Parque Nacional Mochima', content: 'Ficha oficial del destino. Parque marino-costero con playas, islas y diversidad marina.', type: 'ficha', date: '2026-05-18', published: true, destination: 11, region: 'oriental' },
-  { id: 7, title: 'Isla de Margarita: Temporada Alta 2026', content: 'Proyecciones de ocupación hotelera y recomendaciones para la temporada vacacional.', type: 'noticia', date: '2026-05-25', published: true, destination: null, region: 'insular' },
-  { id: 8, title: 'Comunicado: Nuevas rutas aéricas a Canaima', content: 'Se han autorizado nuevas frecuencias de vuelos comerciales a Canaima desde Caracas y Porlamar.', type: 'comunicado', date: '2026-05-12', published: true, destination: null, region: 'amazonica' },
-  { id: 9, title: 'Ficha: Dunes de Coro', content: 'Ficha oficial del destino. Parque nacional con dunas de arena y ecosistema xerófilo.', type: 'ficha', date: '2026-05-08', published: true, destination: 9, region: 'eje' },
-  { id: 10, title: 'Turismo de Aventura en los Llanos', content: 'Cabalgatas, pesca deportiva y observación de fauna en los llanos venezolanos.', type: 'noticia', date: '2026-05-05', published: true, destination: null, region: 'llanos' },
-  { id: 11, title: 'Ficha: Parque Nacional Canaima', content: 'Ficha oficial del destino. Patrimonio de la Humanidad con tepuyes y cascadas.', type: 'ficha', date: '2026-04-20', published: true, destination: 3, region: 'amazonica' },
-  { id: 12, title: 'La Grita: Ciudad Mística de los Andes', content: 'Artículo especial sobre la historia y tradiciones religiosas de La Grita.', type: 'noticia', date: '2026-04-15', published: false, destination: null, region: 'los_andes' },
-]
+const typeLabels = { noticia: 'Noticia', comunicado: 'Comunicado', ficha: 'Ficha de Destino' }
 
-export default function CentroDifusion({ regionId = 'national', regionName = 'Visión Nacional' }) {
-  const [posts, setPosts] = useState(initialPosts)
+export default function CentroDifusion({ regionId = null, regionName = 'Visión Nacional' }) {
+  const [posts, setPosts] = useState([])
+  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [detail, setDetail] = useState(null)
   const [filterType, setFilterType] = useState('todas')
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ title: '', content: '', type: 'noticia', published: true, destination: '' })
+  const [form, setForm] = useState({ titulo: '', contenido: '', tipo: 'noticia', published: true })
+
+  useEffect(() => {
+    setLoading(true)
+    contenidoService.getInstitucional()
+      .then((res) => {
+        setPosts(res.contenidos || [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
 
   const openForm = (post = null) => {
     if (post) {
       setEditing(post.id)
-      setForm({ title: post.title, content: post.content, type: post.type, published: post.published, destination: post.destination || '' })
+      setForm({ titulo: post.titulo, contenido: post.descripcion || '', tipo: post.tipo || 'noticia', published: true })
     } else {
       setEditing(null)
-      setForm({ title: '', content: '', type: 'noticia', published: true, destination: '' })
+      setForm({ titulo: '', contenido: '', tipo: 'noticia', published: true })
     }
     setShowForm(true)
   }
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault()
-    if (!form.title.trim() || !form.content.trim()) return
-    const payload = { ...form, destination: form.destination ? Number(form.destination) : null }
-    if (editing) {
-      setPosts(prev => prev.map(p => p.id === editing ? { ...p, ...payload } : p))
-    } else {
-      setPosts(prev => [{ id: Date.now(), ...payload, date: new Date().toISOString().slice(0, 10) }, ...prev])
+    if (!form.titulo.trim() || !form.contenido.trim()) return
+    try {
+      const payload = { titulo: form.titulo, descripcion: form.contenido, tipo: form.tipo }
+      if (editing) {
+        await contenidoService.updateInstitucional(editing, payload)
+      } else {
+        await contenidoService.createInstitucional(payload)
+      }
+      const res = await contenidoService.getInstitucional()
+      setPosts(res.contenidos || [])
+      setShowForm(false)
+      setEditing(null)
+    } catch (err) {
+      alert('Error al guardar: ' + err.message)
     }
-    setShowForm(false)
-    setEditing(null)
   }
 
-  const handleDelete = (id) => {
-    if (window.confirm('¿Eliminar esta publicación?'))
+  const handleDelete = async (id) => {
+    if (!window.confirm('¿Eliminar esta publicación?')) return
+    try {
+      await contenidoService.deleteInstitucional(id)
       setPosts(prev => prev.filter(p => p.id !== id))
-  }
-
-  const togglePublish = (id) => {
-    setPosts(prev => prev.map(p => p.id === id ? { ...p, published: !p.published } : p))
+    } catch (err) {
+      alert('Error al eliminar: ' + err.message)
+    }
   }
 
   const filtered = posts.filter(p => {
-    const matchType = filterType === 'todas' || p.type === filterType
-    const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) || p.content.toLowerCase().includes(search.toLowerCase())
-    const matchRegion = regionId === 'national' ? true : p.region === regionId
-    return matchType && matchSearch && matchRegion
+    const matchType = filterType === 'todas' || p.tipo === filterType
+    const matchSearch = !search ||
+      (p.titulo || '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.descripcion || '').toLowerCase().includes(search.toLowerCase())
+    return matchType && matchSearch
   })
 
-  const typeLabels = { noticia: 'Noticia', comunicado: 'Comunicado', ficha: 'Ficha de Destino' }
+  if (loading) {
+    return <div className="module-container"><p className="module-subtitle">Cargando contenido...</p></div>
+  }
 
   return (
     <div className="module-container">
@@ -91,24 +100,16 @@ export default function CentroDifusion({ regionId = 'national', regionName = 'Vi
           <RegionOverviewCard moduleKey="difusion" regionId={regionId} regionName={regionName} />
         ) : (
           filtered.map(p => (
-            <div key={p.id} className={`post-card ${!p.published ? 'post-draft' : ''}`} onClick={() => setDetail(p)}>
+            <div key={p.id} className="post-card" onClick={() => setDetail(p)}>
               <div className="post-card-left">
-                <span className={`post-type-badge ${p.type}`}>{typeLabels[p.type]}</span>
+                <span className={`post-type-badge ${p.tipo}`}>{typeLabels[p.tipo] || p.tipo}</span>
                 <div className="post-card-info">
-                  <h4 className="post-card-title">{p.title}</h4>
-                  <p className="post-card-excerpt">{p.content.slice(0, 120)}...</p>
-                  <span className="post-card-date">{new Date(p.date).toLocaleDateString('es-ES')}</span>
+                  <h4 className="post-card-title">{p.titulo}</h4>
+                  <p className="post-card-excerpt">{(p.descripcion || '').slice(0, 120)}...</p>
+                  <span className="post-card-date">{p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : ''}</span>
                 </div>
               </div>
               <div className="post-card-actions">
-                {!p.published && <span className="post-draft-label">Borrador</span>}
-                <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); togglePublish(p.id) }} title={p.published ? 'Despublicar' : 'Publicar'}>
-                  {p.published ? (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
-                  )}
-                </button>
                 <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); openForm(p) }} title="Editar">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                 </button>
@@ -133,11 +134,11 @@ export default function CentroDifusion({ regionId = 'national', regionName = 'Vi
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
                     <label>Título *</label>
-                    <input type="text" className="form-modal-input" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} required />
+                    <input type="text" className="form-modal-input" value={form.titulo} onChange={e => setForm(p => ({ ...p, titulo: e.target.value }))} required />
                   </div>
                   <div className="form-modal-group" style={{ minWidth: '140px' }}>
                     <label>Tipo</label>
-                    <select className="form-modal-select" value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}>
+                    <select className="form-modal-select" value={form.tipo} onChange={e => setForm(p => ({ ...p, tipo: e.target.value }))}>
                       <option value="noticia">Noticia</option>
                       <option value="comunicado">Comunicado</option>
                       <option value="ficha">Ficha de Destino</option>
@@ -146,20 +147,7 @@ export default function CentroDifusion({ regionId = 'national', regionName = 'Vi
                 </div>
                 <div className="form-modal-group">
                   <label>Contenido *</label>
-                  <textarea className="form-modal-textarea" rows="5" value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} required />
-                </div>
-                <div className="form-row">
-                  <div className="form-modal-group flex-1">
-                    <label>Destino asociado (opcional)</label>
-                    <input type="number" className="form-modal-input" placeholder="ID del destino" value={form.destination} onChange={e => setForm(p => ({ ...p, destination: e.target.value }))} />
-                  </div>
-                  <div className="form-modal-group" style={{ minWidth: '140px' }}>
-                    <label>Estado</label>
-                    <select className="form-modal-select" value={form.published} onChange={e => setForm(p => ({ ...p, published: e.target.value === 'true' }))}>
-                      <option value="true">Publicado</option>
-                      <option value="false">Borrador</option>
-                    </select>
-                  </div>
+                  <textarea className="form-modal-textarea" rows="5" value={form.contenido} onChange={e => setForm(p => ({ ...p, contenido: e.target.value }))} required />
                 </div>
               </div>
               <div className="modal-footer">
@@ -175,16 +163,14 @@ export default function CentroDifusion({ regionId = 'national', regionName = 'Vi
         <div className="modal-overlay" onClick={() => setDetail(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">{detail.title}</h3>
+              <h3 className="modal-title">{detail.titulo}</h3>
               <button className="modal-close-btn" onClick={() => setDetail(null)}>&times;</button>
             </div>
             <div className="modal-body">
-              <p><span className={`post-type-badge ${detail.type}`}>{typeLabels[detail.type]}</span></p>
-              <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{detail.content}</p>
+              <p><span className={`post-type-badge ${detail.tipo}`}>{typeLabels[detail.tipo] || detail.tipo}</span></p>
+              <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{detail.descripcion}</p>
               <div className="modal-details-card" style={{ marginTop: '16px' }}>
-                <div className="detail-row"><span className="detail-label">Fecha:</span><span className="detail-value">{new Date(detail.date).toLocaleDateString('es-ES')}</span></div>
-                <div className="detail-row"><span className="detail-label">Estado:</span><span className="detail-value">{detail.published ? 'Publicado' : 'Borrador'}</span></div>
-                {detail.destination && <div className="detail-row"><span className="detail-label">Destino ID:</span><span className="detail-value">{detail.destination}</span></div>}
+                <div className="detail-row"><span className="detail-label">Fecha:</span><span className="detail-value">{detail.fecha ? new Date(detail.fecha).toLocaleDateString('es-ES') : ''}</span></div>
               </div>
             </div>
             <div className="modal-footer">

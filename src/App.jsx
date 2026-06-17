@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import cotaturLogo from './assets/cotatur_logo.png'
 import './App.css'
@@ -11,14 +11,13 @@ import CentroSoporte from './components/CentroSoporte.jsx'
 import ConfiguracionSistema from './components/ConfiguracionSistema.jsx'
 import ValidationWizard from './components/ValidationWizard.jsx'
 import RegionOverviewCard from './components/RegionOverviewCard.jsx'
-import { regionsList, corporationsByRegion } from './regionContent'
+import { useRegion } from './RegionContext.jsx'
+import { destinosService } from './services/destinos'
+import { prestadoresService } from './services/prestadores'
+import { eventosService } from './services/eventos'
+import { usuariosService } from './services/usuarios'
 
 function App() {
-  // Registered Users list state (default pre-filled with admin credentials)
-  const [users, setUsers] = useState([
-    { username: 'admin', password: 'cotatur2026', email: 'admin@cotatur.gob.ve', fullName: 'Ricardo Salas' }
-  ])
-
   // Form states (Login)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -40,16 +39,6 @@ function App() {
   // Dashboard Navigation State
   const [activeNav, setActiveNav] = useState('dashboard')
   
-  // Dashboard Merchants State
-  const [merchants, setMerchants] = useState([
-    { id: 1, name: 'Posada La Montaña', category: 'Alojamiento Turístico', rif: 'J-29384756-0', date: '24 Oct, 2023', status: 'pendiente', region: 'los_andes' },
-    { id: 2, name: 'Sabores Tachirenses', category: 'Gastronomía Regional', rif: 'J-30112233-1', date: '23 Oct, 2023', status: 'validado', region: 'los_andes' },
-    { id: 3, name: 'Rutas del Páramo', category: 'Agencia de Viajes', rif: 'J-45566778-9', date: '22 Oct, 2023', status: 'rechazado', region: 'central' },
-    { id: 4, name: 'Hotel Venetur Mérida', category: 'Alojamiento Turístico', rif: 'J-40011223-3', date: '10 Nov, 2025', status: 'validado', region: 'los_andes' },
-    { id: 5, name: 'Restaurant El Criollo', category: 'Gastronomía Regional', rif: 'J-31223344-5', date: '05 Sep, 2025', status: 'pendiente', region: 'central' },
-    { id: 6, name: 'Posada Caribe', category: 'Alojamiento Turístico', rif: 'J-50011223-6', date: '01 Feb, 2026', status: 'validado', region: 'insular' },
-  ])
-  
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -64,13 +53,37 @@ function App() {
   ]
   const currentTimeframeLabel = timeframeOptions.find(t => t.value === timeframe)?.label || 'Últimos 30 días'
 
-  // Simulated auth & region state (for UI behavior)
-  const [authUser, setAuthUser] = useState({ role: 'superadmin', assignedRegion: 'los_andes', fullName: 'Lic. Ricardo Salas' })
-  const [regionId, setRegionId] = useState(authUser.role === 'superadmin' ? 'national' : authUser.assignedRegion)
-  const regions = regionsList
-  const regionObj = regions.find(r => r.id === regionId) || regions[0]
-  const regionName = regionObj.name
-  const corporationsList = corporationsByRegion[regionId] || []
+  // Auth & Region state from context
+  const { regions, regionId, regionName, setRegionId, role, loading: regionsLoading } = useRegion()
+  // Dashboard data from API
+  const [dashboardStats, setDashboardStats] = useState({ destinos: 0, prestadores: 0, eventos: 0, usuarios: 0 })
+  const [merchants, setMerchants] = useState([])
+  const [loadingData, setLoadingData] = useState(true)
+  
+  useEffect(() => {
+    if (regionsLoading) return
+    const params = regionId ? { regionId } : {}
+    setLoadingData(true)
+    Promise.all([
+      destinosService.getAll(params).catch(() => ({ destinos: [], meta: { total: 0 } })),
+      prestadoresService.getAll(params).catch(() => ({ prestadores: [], meta: { total: 0 } })),
+      eventosService.getAll(params).catch(() => ({ eventos: [], meta: { total: 0 } })),
+      usuariosService.getAll().catch(() => ({ usuarios: [], meta: { total: 0 } })),
+    ]).then(([destinosRes, prestadoresRes, eventosRes, usuariosRes]) => {
+      const destinos = destinosRes.destinos || destinosRes.data?.destinos || []
+      const prestadores = prestadoresRes.prestadores || prestadoresRes.data?.prestadores || []
+      const eventos = eventosRes.eventos || eventosRes.data?.eventos || []
+      const usuarios = usuariosRes.usuarios || usuariosRes.data?.usuarios || []
+      setDashboardStats({
+        destinos: destinos.length,
+        prestadores: prestadores.length,
+        eventos: eventos.length,
+        usuarios: usuarios.length,
+      })
+      setMerchants(prestadores)
+      setLoadingData(false)
+    }).catch(() => setLoadingData(false))
+  }, [regionId, regionsLoading])
   
   // Modal states
   const [reviewMerchant, setReviewMerchant] = useState(null)
@@ -86,34 +99,29 @@ function App() {
   // Validation wizard state
   const [wizardOpen, setWizardOpen] = useState(false)
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault()
     setErrorMsg('')
-    
+
     if (!username.trim() || !password.trim()) {
       setErrorMsg('Por favor, complete todos los campos.')
       return
     }
 
-    const normalizedUser = username.trim().toLowerCase()
-    
-    // Look up the user in the dynamic list
-    const foundUser = users.find(u => 
-      (u.username.toLowerCase() === normalizedUser || u.email.toLowerCase() === normalizedUser) && 
-      u.password === password
-    )
-
-    if (foundUser) {
+    try {
+      const { authService } = await import('./services/auth')
+      const res = await authService.login({ email: username.trim(), password })
+      localStorage.setItem('auth_token', res.data.accessToken)
+      localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
       setCurrentView('dashboard')
-      // Reset form
       setUsername('')
       setPassword('')
-    } else {
-      setErrorMsg('Credenciales incorrectas. Intente con admin / cotatur2026 o regístrese.')
+    } catch (err) {
+      setErrorMsg(err.message || 'Credenciales incorrectas')
     }
   }
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault()
     setRegErrorMsg('')
 
@@ -132,47 +140,32 @@ function App() {
       return
     }
 
-    const normalizedUser = regUsername.trim().toLowerCase()
-    const normalizedEmail = regEmail.trim().toLowerCase()
-    
-    // Check if user or email exists
-    const userExists = users.some(u => 
-      u.username.toLowerCase() === normalizedUser || 
-      u.email.toLowerCase() === normalizedEmail
-    )
+    try {
+      const { authService } = await import('./services/auth')
+      const res = await authService.register({
+        nombre: regFullName.trim(),
+        email: regEmail.trim(),
+        password: regPassword,
+      })
+      localStorage.setItem('auth_token', res.data.accessToken)
+      localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
 
-    if (userExists) {
-      setRegErrorMsg('El usuario o correo electrónico ya está registrado.')
-      return
+      setRegFullName('')
+      setRegEmail('')
+      setRegUsername('')
+      setRegPassword('')
+      setRegConfirmPassword('')
+
+      setCurrentView('login')
+      setUsername(res.data.usuario.email || regEmail.trim())
+
+      triggerModal(
+        'Registro Exitoso',
+        `¡Su cuenta ha sido creada! Ya puede iniciar sesión.`
+      )
+    } catch (err) {
+      setRegErrorMsg(err.message || 'Error al registrar')
     }
-
-    // Add new user
-    const newUser = {
-      username: regUsername.trim(),
-      password: regPassword,
-      email: regEmail.trim(),
-      fullName: regFullName.trim()
-    }
-
-    setUsers(prev => [...prev, newUser])
-
-    // Clear form inputs
-    setRegFullName('')
-    setRegEmail('')
-    setRegUsername('')
-    setRegPassword('')
-    setRegConfirmPassword('')
-
-    // Auto-fill login form
-    setUsername(newUser.username)
-
-    // Go back to login screen
-    setCurrentView('login')
-    
-    triggerModal(
-      'Registro Exitoso',
-      `¡Su cuenta "${newUser.username}" ha sido creada! Ya puede iniciar sesión con la clave ingresada.`
-    )
   }
 
   const triggerModal = (title, message) => {
@@ -183,47 +176,87 @@ function App() {
     setModalInfo({ isOpen: false, title: '', message: '' })
   }
 
-  const handleReviewAction = (id, newStatus) => {
-    setMerchants(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m))
-    setReviewMerchant(null)
-    triggerModal(
-      newStatus === 'validado' ? 'Solicitud Aprobada' : 'Solicitud Rechazada',
-      `El prestador turístico ha sido marcado como ${newStatus.toUpperCase()} exitosamente.`
-    )
+  const handleReviewAction = async (id, newStatus) => {
+    try {
+      await prestadoresService.updateEstado(id, newStatus)
+      setMerchants(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m))
+      setReviewMerchant(null)
+      triggerModal(
+        newStatus === 'validado' ? 'Solicitud Aprobada' : 'Solicitud Rechazada',
+        `El prestador turístico ha sido marcado como ${newStatus.toUpperCase()} exitosamente.`
+      )
+    } catch (err) {
+      triggerModal('Error', err.message || 'Error al actualizar estado')
+    }
   }
 
-  const handleWizardSubmit = (merchantData) => {
-    setMerchants(prev => [merchantData, ...prev])
-    triggerModal('Registro Exitoso', `El prestador "${merchantData.name}" ha sido registrado y enviado para validación.`)
+  const handleWizardSubmit = async (merchantData) => {
+    try {
+      const tipoMap = {
+        'Alojamiento Turístico': 'hosped',
+        'Gastronomía Regional': 'rest',
+        'Agencia de Viajes': 'agencia',
+        'Transporte Turístico': 'transp',
+        'Guía de Turismo': 'guia',
+      }
+      let lat = null, lon = null
+      if (merchantData.coordinates) {
+        const coords = merchantData.coordinates.match(/(-?\d+\.?\d*)/g)
+        if (coords && coords.length >= 2) {
+          lat = parseFloat(coords[0])
+          lon = parseFloat(coords[1])
+        }
+      }
+      const payload = {
+        nombre: merchantData.name,
+        tipo: tipoMap[merchantData.category] || merchantData.category,
+        email: merchantData.email,
+        telefono: merchantData.phone,
+        direccion: merchantData.address,
+        lat,
+        lon,
+      }
+      await prestadoresService.create(payload)
+      const params = regionId ? { regionId } : {}
+      const res = await prestadoresService.getAll(params)
+      setMerchants(res.prestadores || [])
+      triggerModal('Registro Exitoso', `El prestador "${merchantData.name}" ha sido registrado y enviado para validación.`)
+    } catch (err) {
+      triggerModal('Error', err.message || 'Error al registrar prestador')
+    }
   }
 
-  const handleAddMerchantSubmit = (e) => {
+  const handleAddMerchantSubmit = async (e) => {
     e.preventDefault()
     if (!newMerchant.name.trim() || !newMerchant.rif.trim()) {
       alert('Por favor complete los campos obligatorios.')
       return
     }
-    const today = new Date()
-    const options = { day: '2-digit', month: 'short', year: 'numeric' }
-    const formattedDate = today.toLocaleDateString('es-ES', options).replace('.', '')
-    
-    const created = {
-      id: Date.now(),
-      name: newMerchant.name,
-      category: newMerchant.category,
-      rif: newMerchant.rif,
-      date: formattedDate,
-      status: 'pendiente'
+    try {
+      const tipoMap = {
+        'Alojamiento Turístico': 'hosped',
+        'Gastronomía Regional': 'rest',
+        'Agencia de Viajes': 'agencia',
+        'Transporte Turístico': 'transp',
+        'Guía de Turismo': 'guia',
+      }
+      await prestadoresService.create({
+        nombre: newMerchant.name,
+        tipo: tipoMap[newMerchant.category] || newMerchant.category,
+        rif: newMerchant.rif,
+      })
+      const params = regionId ? { regionId } : {}
+      const res = await prestadoresService.getAll(params)
+      setMerchants(res.prestadores || [])
+      setIsAddModalOpen(false)
+      setNewMerchant({ name: '', category: 'Alojamiento Turístico', rif: '' })
+      triggerModal(
+        'Punto Registrado',
+        `El prestador "${newMerchant.name}" ha sido ingresado como PENDIENTE de validación.`
+      )
+    } catch (err) {
+      triggerModal('Error', err.message || 'Error al registrar prestador')
     }
-    
-    setMerchants(prev => [created, ...prev])
-    setIsAddModalOpen(false)
-    setNewMerchant({ name: '', category: 'Alojamiento Turístico', rif: '' })
-    
-    triggerModal(
-      'Punto Registrado',
-      `El prestador "${created.name}" ha sido ingresado como PENDIENTE de validación.`
-    )
   }
 
   function isWithinTimeframe(dateStr, timeframe) {
@@ -248,28 +281,46 @@ function App() {
     }
   }
 
-  const filteredMerchants = merchants.filter(m => 
-    (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.rif.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.category.toLowerCase().includes(searchQuery.toLowerCase())) &&
-    (regionId === 'national' ? true : m.region === regionId) &&
-    isWithinTimeframe(m.date, timeframe)
-  )
+  const filteredMerchants = merchants.filter(m => {
+    const name = (m.PROV_NOM || m.name || '').toLowerCase()
+    const rif = (m.PROV_RIF || m.rif || '').toLowerCase()
+    const category = (m.PROV_TSE || m.category || '').toLowerCase()
+    const q = searchQuery.toLowerCase()
+    return (!q || name.includes(q) || rif.includes(q) || category.includes(q))
+  })
 
-  const regionBaseTotals = {
-    national: { registered: 1284, georeferenced: 452, alerts: 18 },
-    los_andes: { registered: 312, georeferenced: 142, alerts: 4 },
-    central: { registered: 218, georeferenced: 90, alerts: 3 },
-    insular: { registered: 140, georeferenced: 60, alerts: 2 },
-    llanos: { registered: 102, georeferenced: 40, alerts: 1 },
-    eje: { registered: 230, georeferenced: 110, alerts: 3 },
-    amazonica: { registered: 58, georeferenced: 10, alerts: 1 },
-    oriental: { registered: 192, georeferenced: 120, alerts: 4 },
+  const totalRegisteredCount = dashboardStats.prestadores
+  const totalGeoreferencedCount = dashboardStats.destinos
+  const totalAlertsCount = 0
+
+  const categoryCounts = {}
+  for (const m of merchants) {
+    const cat = m.category || 'Otros'
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1
   }
-  const base = regionBaseTotals[regionId] || regionBaseTotals.national
-  const totalRegisteredCount = base.registered + (filteredMerchants.length)
-  const totalGeoreferencedCount = base.georeferenced + (filteredMerchants.filter(m => m.status === 'validado').length)
-  const totalAlertsCount = base.alerts
+  const maxCatCount = Math.max(...Object.values(categoryCounts), 1)
+  const catColors = {
+    'Alojamiento Turístico': 'green',
+    'Gastronomía Regional': 'blue',
+    'Agencia de Viajes': 'orange',
+    'Transporte Turístico': 'teal',
+    'Guía de Turismo': 'purple',
+  }
+  const catLabels = {
+    'Alojamiento Turístico': 'Alojamiento',
+    'Gastronomía Regional': 'Gastronomía',
+    'Agencia de Viajes': 'Agencias',
+    'Transporte Turístico': 'Transporte',
+    'Guía de Turismo': 'Guías',
+  }
+
+  const validados = merchants.filter(m => m.status === 'validado').length
+  const rechazados = merchants.filter(m => m.status === 'rechazado').length
+  const pendientes = merchants.filter(m => m.status === 'pendiente').length
+  const totalStatus = validados + rechazados + pendientes || 1
+  const validadosPct = Math.round(validados / totalStatus * 100)
+  const rechazadosPct = Math.round(rechazados / totalStatus * 100)
+  const pendientesPct = Math.round(pendientes / totalStatus * 100)
 
   return (
     <div style={{ width: '100%' }}>
@@ -716,7 +767,7 @@ function App() {
             <div className="sidebar-brand-container">
               <div className="sidebar-logo-text">MINTUR</div>
               <h1 className="sidebar-brand-name">MINTUR</h1>
-              <p className="sidebar-brand-sub">{regionId === 'national' ? 'Turismo Nacional VZLA' : regionName}</p>
+              <p className="sidebar-brand-sub">{!regionId ? 'Turismo Nacional VZLA' : regionName}</p>
             </div>
             
             <nav className="sidebar-nav">
@@ -848,8 +899,8 @@ function App() {
               <h2 className="header-portal-title">MINTUR Portal</h2>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <select className="region-selector" value={regionId} onChange={(e) => setRegionId(e.target.value)} title="Selector Global de Región" disabled={authUser.role !== 'superadmin'}>
-                  {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={role !== 'superadmin'}>
+                  {regions.map(r => <option key={r.id ?? 'national'} value={r.id ?? ''}>{r.name}</option>)}
                 </select>
 
                 <div className="header-search-bar">
@@ -906,10 +957,9 @@ function App() {
                 <button 
                   className="btn-logout-header" 
                   onClick={() => {
-                    const conf = window.confirm('¿Desea cerrar la sesión y volver al inicio?')
-                    if (conf) {
-                      setCurrentView('login')
-                    }
+                    localStorage.removeItem('auth_token')
+                    localStorage.removeItem('auth_user')
+                    setCurrentView('login')
                   }}
                   title="Cerrar Sesión"
                 >
@@ -963,11 +1013,11 @@ function App() {
                       <section className="metrics-grid">
                         <div className="corporations-row" style={{ marginBottom: '12px' }}>
                           <div className="corp-card">
-                            <h4 className="corp-card-title">Corporaciones vinculadas</h4>
-                            <p className="corp-card-sub">{regionId === 'national' ? 'Listado nacional de corporaciones regionales' : `Corporaciones en ${regionName}`}</p>
+                            <h4 className="corp-card-title">Resumen Regional</h4>
+                            <p className="corp-card-sub">{!regionId ? 'Datos nacionales' : `Mostrando datos de ${regionName}`}</p>
                             <div className="corp-chips">
-                              {corporationsList.map((c, i) => <span key={i} className="corp-chip">{c}</span>)}
-                              {corporationsList.length === 0 && <span className="corp-chip">Sin corporaciones registradas</span>}
+                              <span className="corp-chip">{dashboardStats.destinos} destinos</span>
+                              <span className="corp-chip">{dashboardStats.prestadores} prestadores</span>
                             </div>
                           </div>
                         </div>
@@ -977,22 +1027,39 @@ function App() {
                       </section>
                       <section className="charts-section">
                         <div className="chart-card"><h4 className="chart-title">Proveedores por Categoría</h4><div className="chart-bars">
-                          <div className="chart-bar-item"><span className="chart-bar-label">Alojamiento</span><div className="chart-bar-track"><div className="chart-bar-fill green" style={{width:'75%'}}><span>75%</span></div></div></div>
-                          <div className="chart-bar-item"><span className="chart-bar-label">Gastronomía</span><div className="chart-bar-track"><div className="chart-bar-fill blue" style={{width:'60%'}}><span>60%</span></div></div></div>
-                          <div className="chart-bar-item"><span className="chart-bar-label">Agencias</span><div className="chart-bar-track"><div className="chart-bar-fill orange" style={{width:'40%'}}><span>40%</span></div></div></div>
-                          <div className="chart-bar-item"><span className="chart-bar-label">Transporte</span><div className="chart-bar-track"><div className="chart-bar-fill teal" style={{width:'25%'}}><span>25%</span></div></div></div>
-                          <div className="chart-bar-item"><span className="chart-bar-label">Guías</span><div className="chart-bar-track"><div className="chart-bar-fill purple" style={{width:'15%'}}><span>15%</span></div></div></div>
+                          {Object.entries(categoryCounts).length === 0 ? (
+                            <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
+                          ) : (
+                            Object.entries(categoryCounts).map(([cat, count]) => (
+                              <div key={cat} className="chart-bar-item">
+                                <span className="chart-bar-label">{catLabels[cat] || cat}</span>
+                                <div className="chart-bar-track">
+                                  <div className={`chart-bar-fill ${catColors[cat] || 'gray'}`} style={{width: `${Math.round(count / maxCatCount * 100)}%`}}>
+                                    <span>{Math.round(count / maxCatCount * 100)}%</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div></div>
                         <div className="chart-card"><h4 className="chart-title">Estado de Validaciones</h4><div className="chart-donut">
-                          <div className="donut-ring"><svg viewBox="0 0 36 36" className="donut-svg"><path className="donut-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment green" strokeDasharray="60,40" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment red" strokeDasharray="20,80" strokeDashoffset="-60" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment yellow" strokeDasharray="20,80" strokeDashoffset="-80" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg><div className="donut-center">{merchants.length}</div></div>
-                          <div className="donut-legend"><div className="legend-item"><span className="legend-dot green"></span>Validados: {merchants.filter(m => m.status === 'validado').length}</div><div className="legend-item"><span className="legend-dot red"></span>Rechazados: {merchants.filter(m => m.status === 'rechazado').length}</div><div className="legend-item"><span className="legend-dot yellow"></span>Pendientes: {merchants.filter(m => m.status === 'pendiente').length}</div></div>
+                          <div className="donut-ring"><svg viewBox="0 0 36 36" className="donut-svg"><path className="donut-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment green" strokeDasharray={`${validadosPct},${100 - validadosPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment red" strokeDasharray={`${rechazadosPct},${100 - rechazadosPct}`} strokeDashoffset={`${-validadosPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment yellow" strokeDasharray={`${pendientesPct},${100 - pendientesPct}`} strokeDashoffset={`${-(validadosPct + rechazadosPct)}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg><div className="donut-center">{merchants.length}</div></div>
+                          <div className="donut-legend"><div className="legend-item"><span className="legend-dot green"></span>Validados: {validados}</div><div className="legend-item"><span className="legend-dot red"></span>Rechazados: {rechazados}</div><div className="legend-item"><span className="legend-dot yellow"></span>Pendientes: {pendientes}</div></div>
                         </div></div>
                         <div className="chart-card chart-card-full"><h4 className="chart-title">Actividad Reciente</h4><div className="timeline-chart">
-                          <div className="timeline-item"><div className="timeline-dot green"></div><div className="timeline-content"><strong>Posada La Montaña</strong> fue validada <span className="timeline-date">hace 2 días</span></div></div>
-                          <div className="timeline-item"><div className="timeline-dot red"></div><div className="timeline-content"><strong>Rutas del Páramo</strong> fue rechazada <span className="timeline-date">hace 3 días</span></div></div>
-                          <div className="timeline-item"><div className="timeline-dot yellow"></div><div className="timeline-content"><strong>Sabores Tachirenses</strong> está pendiente <span className="timeline-date">hace 5 días</span></div></div>
-                          <div className="timeline-item"><div className="timeline-dot green"></div><div className="timeline-content"><strong>Hotel Venetur Mérida</strong> fue validado <span className="timeline-date">hace 1 semana</span></div></div>
-                          <div className="timeline-item"><div className="timeline-dot yellow"></div><div className="timeline-content"><strong>Restaurant El Criollo</strong> está pendiente <span className="timeline-date">hace 1 semana</span></div></div>
+                          {merchants.length === 0 ? (
+                            <div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content">Sin actividad reciente</div></div>
+                          ) : (
+                            [...merchants].reverse().slice(0, 5).map(m => (
+                              <div key={m.id} className="timeline-item">
+                                <div className={`timeline-dot ${m.status === 'validado' ? 'green' : m.status === 'rechazado' ? 'red' : 'yellow'}`}></div>
+                                <div className="timeline-content">
+                                  <strong>{m.name}</strong>
+                                  {m.status === 'validado' ? ' fue validado' : m.status === 'rechazado' ? ' fue rechazado' : ' está pendiente'}
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div></div>
                       </section>
                       <section className="table-section">
@@ -1005,9 +1072,9 @@ function App() {
                             [...filteredMerchants].reverse().map((merchant) => (
                               <tr key={merchant.id}>
                                 <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',fontWeight:'bold'}}>{merchant.category.includes('Alojamiento') ? '🏨' : merchant.category.includes('Gastronomía') ? '🍽️' : '✈️'}</div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
-                                <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif}</td>
-                                <td className="table-td">{merchant.date}</td>
-                                <td className="table-td"><span className={'badge-status ' + merchant.status.toLowerCase()}>{merchant.status.toUpperCase()}</span></td>
+                                <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
+                                <td className="table-td">{merchant.date || '—'}</td>
+                                <td className="table-td"><span className={'badge-status ' + (merchant.status || 'pendiente').toLowerCase()}>{(merchant.status || 'pendiente').toUpperCase()}</span></td>
                                 <td className="table-td"><button className="btn-action-review" onClick={() => setReviewMerchant(merchant)}>Revisar</button></td>
                               </tr>
                             ))
@@ -1054,9 +1121,9 @@ function App() {
                             {[...filteredMerchants].reverse().map((merchant) => (
                               <tr key={merchant.id}>
                                 <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',fontWeight:'bold'}}>{merchant.category.includes('Alojamiento') ? '🏨' : merchant.category.includes('Gastronomía') ? '🍽️' : '✈️'}</div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
-                                <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif}</td>
-                                <td className="table-td">{merchant.date}</td>
-                                <td className="table-td"><span className={'badge-status ' + merchant.status.toLowerCase()}>{merchant.status.toUpperCase()}</span></td>
+                                <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
+                                <td className="table-td">{merchant.date || '—'}</td>
+                                <td className="table-td"><span className={'badge-status ' + (merchant.status || 'pendiente').toLowerCase()}>{(merchant.status || 'pendiente').toUpperCase()}</span></td>
                                 <td className="table-td"><button className="btn-action-review" onClick={() => setReviewMerchant(merchant)}>Revisar</button></td>
                               </tr>
                             ))}
@@ -1110,15 +1177,15 @@ function App() {
                 </div>
                 <div className="detail-row">
                   <span className="detail-label">RIF:</span>
-                  <span className="detail-value" style={{ fontFamily: 'monospace' }}>{reviewMerchant.rif}</span>
+                  <span className="detail-value" style={{ fontFamily: 'monospace' }}>{reviewMerchant.rif || '—'}</span>
                 </div>
                 <div className="detail-row">
                   <span className="detail-label">Fecha Reg:</span>
-                  <span className="detail-value">{reviewMerchant.date}</span>
+                  <span className="detail-value">{reviewMerchant.date || '—'}</span>
                 </div>
                 <div className="detail-row">
                   <span className="detail-label">Estado Actual:</span>
-                  <span className="detail-value" style={{ textTransform: 'uppercase', fontWeight: 'bold', color: reviewMerchant.status === 'pendiente' ? '#ba1a1a' : reviewMerchant.status === 'validado' ? 'var(--color-primary)' : '#E52320' }}>{reviewMerchant.status}</span>
+                  <span className="detail-value" style={{ textTransform: 'uppercase', fontWeight: 'bold', color: (reviewMerchant.status || 'pendiente') === 'pendiente' ? '#ba1a1a' : (reviewMerchant.status || '') === 'validado' ? 'var(--color-primary)' : '#E52320' }}>{reviewMerchant.status || 'pendiente'}</span>
                 </div>
               </div>
             </div>

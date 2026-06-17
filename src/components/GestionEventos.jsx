@@ -1,88 +1,106 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import RegionOverviewCard from './RegionOverviewCard.jsx'
-
-const initialEvents = [
-  { id: 1, title: 'Feria Internacional de San Sebastián', description: 'Evento cultural y ferial con exposiciones agropecuarias, artesanales y musicales.', date: '2026-01-20', destination: 'San Cristóbal', eventType: 'Feria', status: 'activo', region: 'los_andes' },
-  { id: 2, title: 'Ferias de Colón', description: 'Evento cultural y religioso en el municipio Ayacucho', date: '2026-04-02', destination: 'Colón', eventType: 'Cultural', status: 'finalizado', region: 'central' },
-  { id: 3, title: 'Festival Gastronómico de Capacho', description: 'Evento gastronómico con degustaciones y concursos.', date: '2026-08-15', destination: 'Capacho', eventType: 'Gastronómico', status: 'activo', region: 'los_andes' },
-  { id: 4, title: 'Expo Turismo Táchira 2026', description: 'Exposición de la oferta turística regional con rueda de negocios.', date: '2026-11-10', destination: 'San Cristóbal', eventType: 'Feria', status: 'planificado', region: 'los_andes' },
-  { id: 5, title: 'Carnaval de Margarita', description: 'Desfiles y comparsas en las calles de Porlamar y Pampatar.', date: '2026-02-14', destination: 'Porlamar', eventType: 'Cultural', status: 'finalizado', region: 'insular' },
-  { id: 6, title: 'Feria Internacional de Barquisimeto', description: 'Evento ferial con exposiciones, conciertos y actividades culturales.', date: '2026-09-14', destination: 'Barquisimeto', eventType: 'Feria', status: 'planificado', region: 'eje' },
-  { id: 7, title: 'Feria de la Chinita', description: 'La celebración más importante del Zulia en honor a la Virgen de la Chiquinquirá.', date: '2026-11-18', destination: 'Maracaibo', eventType: 'Religioso', status: 'planificado', region: 'eje' },
-  { id: 8, title: 'Festival del Joropo', description: 'Música, baile y tradición llanera en San Fernando de Apure.', date: '2026-03-20', destination: 'San Fernando', eventType: 'Cultural', status: 'finalizado', region: 'llanos' },
-  { id: 9, title: 'Exposición Indígena y Artesanal', description: 'Muestra de artesanía y cultura de los pueblos indígenas amazónicos.', date: '2026-10-12', destination: 'Puerto Ayacucho', eventType: 'Cultural', status: 'planificado', region: 'amazonica' },
-  { id: 10, title: 'Carnaval de Cumaná', description: 'Uno de los carnavales más tradicionales del oriente venezolano.', date: '2026-02-14', destination: 'Cumaná', eventType: 'Cultural', status: 'finalizado', region: 'oriental' },
-  { id: 11, title: 'Feria de la Virgen del Valle', description: 'Celebración religiosa en honor a la patrona del oriente venezolano.', date: '2026-09-08', destination: 'El Valle', eventType: 'Religioso', status: 'planificado', region: 'oriental' },
-  { id: 12, title: 'Semana Santa en La Grita', description: 'Una de las celebraciones religiosas más importantes de Venezuela.', date: '2026-04-01', destination: 'La Grita', eventType: 'Religioso', status: 'activo', region: 'los_andes' },
-]
+import { eventosService } from '../services/eventos'
+import { destinosService } from '../services/destinos'
 
 const eventTypes = ['Cultural', 'Feria', 'Gastronómico', 'Deportivo', 'Religioso', 'Musical']
-const destinations = ['San Cristóbal', 'Mérida', 'Tovar', 'Colón', 'Ayacucho', 'Jáuregui', 'La Grita']
-
 const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 function getMonthEvents(events, monthIndex) {
   return events.filter(e => {
-    const m = new Date(e.date).getMonth()
-    return m === monthIndex
+    const d = new Date(e.date)
+    return d.getMonth() === monthIndex
   })
 }
 
-export default function GestionEventos({ regionId = 'national', regionName = 'Visión Nacional' }) {
-  const [events, setEvents] = useState(initialEvents)
+export default function GestionEventos({ regionId = null, regionName = 'Visión Nacional' }) {
+  const [events, setEvents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [destinos, setDestinos] = useState([])
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [detail, setDetail] = useState(null)
-  const [form, setForm] = useState({ title: '', description: '', date: '', destination: 'San Cristóbal', eventType: 'Cultural', status: 'activo' })
+  const [form, setForm] = useState({ title: '', description: '', date: '', destinoId: '', eventType: 'Cultural', status: 'activo' })
+
+  useEffect(() => {
+    const params = {}
+    if (regionId) params.regionId = regionId
+    eventosService.getAll(params).then((res) => {
+      setEvents(res.eventos || [])
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [regionId])
+
+  useEffect(() => {
+    destinosService.getAll({}).then((res) => {
+      setDestinos(res.destinos || [])
+    }).catch(() => {})
+  }, [])
 
   const openForm = (ev = null) => {
     if (ev) {
       setEditing(ev.id)
-      setForm({ title: ev.title, description: ev.description, date: ev.date, destination: ev.destination, eventType: ev.eventType, status: ev.status })
+      setForm({ title: ev.title, description: ev.description || '', date: ev.date ? ev.date.slice(0, 10) : '', destinoId: ev.destinoId || '', eventType: ev.eventType || 'Cultural', status: 'activo' })
     } else {
       setEditing(null)
-      setForm({ title: '', description: '', date: '', destination: 'San Cristóbal', eventType: 'Cultural', status: 'activo' })
+      setForm({ title: '', description: '', date: '', destinoId: '', eventType: 'Cultural', status: 'activo' })
     }
     setShowForm(true)
   }
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault()
     if (!form.title.trim() || !form.date) return
-    if (editing) {
-      setEvents(prev => prev.map(ev => ev.id === editing ? { ...ev, ...form } : ev))
-    } else {
-      setEvents(prev => [{ id: Date.now(), ...form }, ...prev])
+    try {
+      const payload = {
+        nombre: form.title,
+        descripcion: form.description,
+        fechaInicio: form.date,
+        tipoEventoId: eventTypes.indexOf(form.eventType) + 1,
+        destinoId: form.destinoId ? parseInt(form.destinoId) : undefined,
+      }
+      if (editing) {
+        await eventosService.update(editing, payload)
+      } else {
+        await eventosService.create(payload)
+      }
+      const params = {}
+      if (regionId) params.regionId = regionId
+      const res = await eventosService.getAll(params)
+      setEvents(res.eventos || [])
+      setShowForm(false)
+      setEditing(null)
+    } catch (err) {
+      alert('Error al guardar: ' + err.message)
     }
-    setShowForm(false)
-    setEditing(null)
   }
 
-  const handleDelete = (id) => {
-    if (window.confirm('¿Eliminar este evento?'))
+  const handleDelete = async (id) => {
+    if (!window.confirm('¿Eliminar este evento?')) return
+    try {
+      await eventosService.delete(id)
       setEvents(prev => prev.filter(ev => ev.id !== id))
+    } catch (err) {
+      alert('Error al eliminar: ' + err.message)
+    }
   }
 
-  const monthEvents = getMonthEvents(events.filter(ev => regionId === 'national' ? true : ev.region === regionId), currentMonth)
+  const monthEvents = getMonthEvents(events, currentMonth)
 
   const prevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11)
-      setCurrentYear(y => y - 1)
-    } else {
-      setCurrentMonth(m => m - 1)
-    }
+    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y - 1) }
+    else { setCurrentMonth(m => m - 1) }
   }
 
   const nextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0)
-      setCurrentYear(y => y + 1)
-    } else {
-      setCurrentMonth(m => m + 1)
-    }
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y + 1) }
+    else { setCurrentMonth(m => m + 1) }
+  }
+
+  if (loading) {
+    return <div className="module-container"><p className="module-subtitle">Cargando eventos...</p></div>
   }
 
   return (
@@ -122,8 +140,8 @@ export default function GestionEventos({ regionId = 'national', regionName = 'Vi
                 <p className="event-card-desc">{ev.description}</p>
                 <div className="event-card-tags">
                   <span className="event-tag">{ev.eventType}</span>
-                  <span className="event-tag">{ev.destination}</span>
-                  <span className={`event-status-tag ${ev.status}`}>{ev.status}</span>
+                  <span className="event-tag">{ev.destinoName}</span>
+                  <span className="event-status-tag activo">Activo</span>
                 </div>
               </div>
               <div className="event-card-actions-vert">
@@ -149,7 +167,6 @@ export default function GestionEventos({ regionId = 'national', regionName = 'Vi
                 <th className="table-th">Fecha</th>
                 <th className="table-th">Destino</th>
                 <th className="table-th">Tipo</th>
-                <th className="table-th">Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -157,9 +174,8 @@ export default function GestionEventos({ regionId = 'national', regionName = 'Vi
                 <tr key={ev.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(ev)}>
                   <td className="table-td">{ev.title}</td>
                   <td className="table-td">{new Date(ev.date).toLocaleDateString('es-ES')}</td>
-                  <td className="table-td">{ev.destination}</td>
+                  <td className="table-td">{ev.destinoName}</td>
                   <td className="table-td">{ev.eventType}</td>
-                  <td className="table-td"><span className={`event-status-tag ${ev.status}`}>{ev.status}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -191,8 +207,11 @@ export default function GestionEventos({ regionId = 'national', regionName = 'Vi
                   </div>
                   <div className="form-modal-group flex-1">
                     <label>Destino</label>
-                    <select className="form-modal-select" value={form.destination} onChange={e => setForm(p => ({ ...p, destination: e.target.value }))}>
-                      {destinations.map(d => <option key={d} value={d}>{d}</option>)}
+                    <select className="form-modal-select" value={form.destinoId} onChange={e => setForm(p => ({ ...p, destinoId: e.target.value }))}>
+                      <option value="">Seleccione...</option>
+                      {destinos.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -201,14 +220,6 @@ export default function GestionEventos({ regionId = 'national', regionName = 'Vi
                     <label>Tipo de Evento</label>
                     <select className="form-modal-select" value={form.eventType} onChange={e => setForm(p => ({ ...p, eventType: e.target.value }))}>
                       {eventTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-modal-group flex-1">
-                    <label>Estado</label>
-                    <select className="form-modal-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-                      <option value="activo">Activo</option>
-                      <option value="planificado">Planificado</option>
-                      <option value="finalizado">Finalizado</option>
                     </select>
                   </div>
                 </div>
@@ -233,9 +244,8 @@ export default function GestionEventos({ regionId = 'national', regionName = 'Vi
               <div className="modal-details-card">
                 <div className="detail-row"><span className="detail-label">Descripción:</span><span className="detail-value">{detail.description}</span></div>
                 <div className="detail-row"><span className="detail-label">Fecha:</span><span className="detail-value">{new Date(detail.date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span></div>
-                <div className="detail-row"><span className="detail-label">Destino:</span><span className="detail-value">{detail.destination}</span></div>
+                <div className="detail-row"><span className="detail-label">Destino:</span><span className="detail-value">{detail.destinoName}</span></div>
                 <div className="detail-row"><span className="detail-label">Tipo:</span><span className="detail-value">{detail.eventType}</span></div>
-                <div className="detail-row"><span className="detail-label">Estado:</span><span className="detail-value"><span className={`event-status-tag ${detail.status}`}>{detail.status}</span></span></div>
               </div>
             </div>
             <div className="modal-footer">

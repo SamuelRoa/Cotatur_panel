@@ -1,66 +1,38 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import RegionOverviewCard from './RegionOverviewCard.jsx'
+import { usuariosService } from '../services/usuarios'
+import { geoService } from '../services/geo'
 
-const initialRoles = [
-  { id: 1, name: 'Administrador', description: 'Acceso total al sistema, gestión de usuarios y configuración' },
-  { id: 2, name: 'Validador', description: 'Puede revisar y aprobar/rechazar prestadores turísticos' },
-  { id: 3, name: 'Editor', description: 'Puede crear y editar contenido, destinos y eventos' },
-  { id: 4, name: 'Soporte', description: 'Acceso al centro de soporte y bandeja de consultas' },
-]
-
-const initialSystemUsers = [
-  { id: 1, username: 'admin', fullName: 'Ricardo Salas', email: 'admin@cotatur.gob.ve', role: 'Administrador', status: 'activo' },
-  { id: 2, username: 'validador1', fullName: 'María Torres', email: 'validador1@cotatur.gob.ve', role: 'Validador', status: 'activo' },
-  { id: 3, username: 'editor1', fullName: 'Carlos Moreno', email: 'editor1@cotatur.gob.ve', role: 'Editor', status: 'activo' },
-  { id: 4, username: 'soporte1', fullName: 'Ana Rivas', email: 'soporte1@cotatur.gob.ve', role: 'Soporte', status: 'activo' },
-]
-
-const regionMunicipios = {
-  los_andes: [
-    { id: 1, name: 'Mérida', parroquias: ['El Llano','Sagrario','Millita'] },
-    { id: 2, name: 'Tovar', parroquias: ['Tovar','El Amparo'] },
-  ],
-  central: [
-    { id: 3, name: 'Libertador', parroquias: ['Catia','La Pastora'] },
-    { id: 4, name: 'Caracas', parroquias: ['Libertador','Altagracia'] },
-  ],
-  insular: [
-    { id: 5, name: 'Maneiro', parroquias: ['Pampatar'] }
-  ],
-  eje: [
-    { id: 7, name: 'Barquisimeto', parroquias: ['Concepción','El Cují','Santa Rosa'] },
-    { id: 8, name: 'Maracaibo', parroquias: ['Olegario Villalobos','Juana de Ávila','Coquivacoa'] },
-    { id: 9, name: 'Coro', parroquias: ['San Antonio','Santa Ana'] },
-  ],
-  llanos: [
-    { id: 10, name: 'San Fernando', parroquias: ['San Fernando','Apure'] },
-    { id: 11, name: 'Calabozo', parroquias: ['Calabozo','El Calvario'] },
-  ],
-  amazonica: [
-    { id: 12, name: 'Atures', parroquias: ['Puerto Ayacucho','Platanillal'] },
-    { id: 13, name: 'Gran Sabana', parroquias: ['Santa Elena de Uairén','Kavanayén'] },
-  ],
-  oriental: [
-    { id: 14, name: 'Sucre', parroquias: ['Cumaná','Altagracia'] },
-    { id: 15, name: 'Arismendi', parroquias: ['Río Caribe','El Tirano'] },
-  ],
-  national: [
-    { id: 1, name: 'San Cristóbal', parroquias: ['La Concordia','San Sebastián'] },
-    { id: 2, name: 'Mérida', parroquias: ['El Llano','Sagrario'] },
-  ]
-}
-
-export default function ConfiguracionSistema({ regionId = 'national', regionName = 'Visión Nacional' }) {
-  const [users, setUsers] = useState(initialSystemUsers)
+export default function ConfiguracionSistema({ regionId = null, regionName = 'Visión Nacional' }) {
+  const [users, setUsers] = useState([])
+  const [roles, setRoles] = useState([])
+  const [municipios, setMunicipios] = useState([])
+  const [loading, setLoading] = useState(true)
   const [activeConfigTab, setActiveConfigTab] = useState('usuarios')
   const [showUserForm, setShowUserForm] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [userForm, setUserForm] = useState({ username: '', fullName: '', email: '', role: 'Editor', password: '', status: 'activo' })
 
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([
+      usuariosService.getAll(),
+      usuariosService.getRoles().then(r => r.data || r),
+      geoService.getMunicipios().then(r => r.data || r),
+    ])
+      .then(([usersRes, rolesRes, munRes]) => {
+        setUsers(usersRes.usuarios || [])
+        setRoles(Array.isArray(rolesRes) ? rolesRes : rolesRes.roles || [])
+        setMunicipios(Array.isArray(munRes) ? munRes : munRes.municipios || [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
   const openUserForm = (u = null) => {
     if (u) {
       setEditingUser(u.id)
-      setUserForm({ username: u.username, fullName: u.fullName, email: u.email, role: u.role, password: '', status: u.status })
+      setUserForm({ username: u.name || '', fullName: u.name || '', email: u.email || '', role: u.roleName || 'Editor', password: '', status: u.active ? 'activo' : 'inactivo' })
     } else {
       setEditingUser(null)
       setUserForm({ username: '', fullName: '', email: '', role: 'Editor', password: '', status: 'activo' })
@@ -68,20 +40,43 @@ export default function ConfiguracionSistema({ regionId = 'national', regionName
     setShowUserForm(true)
   }
 
-  const handleSaveUser = (e) => {
+  const handleSaveUser = async (e) => {
     e.preventDefault()
-    if (!userForm.username.trim() || !userForm.fullName.trim()) return
-    if (editingUser) {
-      setUsers(prev => prev.map(u => u.id === editingUser ? { ...u, ...userForm, password: userForm.password || u.password } : u))
-    } else {
-      setUsers(prev => [...prev, { id: Date.now(), ...userForm, password: userForm.password || 'default123' }])
+    if (!userForm.fullName.trim()) return
+    try {
+      const payload = { name: userForm.fullName, email: userForm.email }
+      if (editingUser) {
+        await usuariosService.update(editingUser, payload)
+      }
+      const res = await usuariosService.getAll()
+      setUsers(res.usuarios || [])
+      setShowUserForm(false)
+      setEditingUser(null)
+    } catch (err) {
+      alert('Error al guardar: ' + err.message)
     }
-    setShowUserForm(false)
-    setEditingUser(null)
   }
 
-  const toggleUserStatus = (id) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, status: u.status === 'activo' ? 'inactivo' : 'activo' } : u))
+  const toggleUserStatus = async (id) => {
+    try {
+      const u = users.find(x => x.id === id)
+      if (!u) return
+      await usuariosService.update(id, { active: !u.active })
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !u.active } : u))
+    } catch (err) {
+      alert('Error al cambiar estado: ' + err.message)
+    }
+  }
+
+  const groupedMunicipios = {}
+  for (const m of municipios) {
+    const estado = m.ESTA_NOM || m.estado || 'General'
+    if (!groupedMunicipios[estado]) groupedMunicipios[estado] = []
+    groupedMunicipios[estado].push(m)
+  }
+
+  if (loading) {
+    return <div className="module-container"><p className="module-subtitle">Cargando configuración...</p></div>
   }
 
   return (
@@ -109,8 +104,7 @@ export default function ConfiguracionSistema({ regionId = 'national', regionName
             <table className="dashboard-table">
               <thead>
                 <tr>
-                  <th className="table-th">Usuario</th>
-                  <th className="table-th">Nombre Completo</th>
+                  <th className="table-th">Nombre / Usuario</th>
                   <th className="table-th">Email</th>
                   <th className="table-th">Rol</th>
                   <th className="table-th">Estado</th>
@@ -120,20 +114,19 @@ export default function ConfiguracionSistema({ regionId = 'national', regionName
               <tbody>
                 {users.map(u => (
                   <tr key={u.id}>
-                    <td className="table-td" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{u.username}</td>
-                    <td className="table-td">{u.fullName}</td>
+                    <td className="table-td" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{u.name}</td>
                     <td className="table-td">{u.email}</td>
-                    <td className="table-td"><span className="role-badge">{u.role}</span></td>
+                    <td className="table-td"><span className="role-badge">{u.roleName || 'N/A'}</span></td>
                     <td className="table-td">
-                      <span className={`user-status ${u.status}`}>{u.status === 'activo' ? 'Activo' : 'Inactivo'}</span>
+                      <span className={`user-status ${u.active ? 'activo' : 'inactivo'}`}>{u.active ? 'Activo' : 'Inactivo'}</span>
                     </td>
                     <td className="table-td">
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button className="btn-icon-sm" onClick={() => openUserForm(u)} title="Editar">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                         </button>
-                        <button className="btn-icon-sm" onClick={() => toggleUserStatus(u.id)} title={u.status === 'activo' ? 'Desactivar' : 'Activar'}>
-                          {u.status === 'activo' ? (
+                        <button className="btn-icon-sm" onClick={() => toggleUserStatus(u.id)} title={u.active ? 'Desactivar' : 'Activar'}>
+                          {u.active ? (
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                           ) : (
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
@@ -153,32 +146,36 @@ export default function ConfiguracionSistema({ regionId = 'national', regionName
         <div className="config-section">
           <p>Roles y permisos del sistema</p>
           <div className="roles-grid">
-            {initialRoles.map(r => (
-              <div key={r.id} className="role-card">
-                <div className="role-card-icon">
-                  {r.name === 'Administrador' ? '🛡️' : r.name === 'Validador' ? '✅' : r.name === 'Editor' ? '✏️' : '💬'}
+            {roles.length === 0 ? (
+              <p className="module-subtitle">No hay roles configurados.</p>
+            ) : (
+              roles.map(r => (
+                <div key={r.ROLE_COD || r.id} className="role-card">
+                  <div className="role-card-icon">
+                    {r.ROLE_NOM === 'Administrador' ? '🛡️' : r.ROLE_NOM === 'Validador' ? '✅' : r.ROLE_NOM === 'Editor' ? '✏️' : '💬'}
+                  </div>
+                  <h4 className="role-card-name">{r.ROLE_NOM || r.name}</h4>
+                  <p className="role-card-desc">{r.ROLE_DES || r.description}</p>
                 </div>
-                <h4 className="role-card-name">{r.name}</h4>
-                <p className="role-card-desc">{r.description}</p>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
 
       {activeConfigTab === 'catalogos' && (
         <div className="config-section">
-          <p>Catálogo de municipios y parroquias - Contexto: {regionName}</p>
-          {(regionMunicipios[regionId] || regionMunicipios['national']).length === 0 ? (
+          <p>Catálogo de municipios - Contexto: {regionName}</p>
+          {Object.keys(groupedMunicipios).length === 0 ? (
             <RegionOverviewCard moduleKey="configuracion" regionId={regionId} regionName={regionName} />
           ) : (
             <div className="municipios-list">
-              {(regionMunicipios[regionId] || regionMunicipios['national']).map(m => (
-                <div key={m.id} className="municipio-card">
-                  <h4 className="municipio-name">{m.name}</h4>
+              {Object.entries(groupedMunicipios).map(([estado, muns]) => (
+                <div key={estado} className="municipio-card">
+                  <h4 className="municipio-name">{estado}</h4>
                   <div className="parroquias-list">
-                    {m.parroquias.map(p => (
-                      <span key={p} className="parroquia-tag">{p}</span>
+                    {muns.map(m => (
+                      <span key={m.MUNI_COD || m.id} className="parroquia-tag">{m.MUNI_NOM || m.name}</span>
                     ))}
                   </div>
                 </div>
@@ -199,19 +196,15 @@ export default function ConfiguracionSistema({ regionId = 'national', regionName
               <div className="modal-body">
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
-                    <label>Nombre de Usuario *</label>
-                    <input type="text" className="form-modal-input" value={userForm.username} onChange={e => setUserForm(p => ({ ...p, username: e.target.value }))} required />
-                  </div>
-                  <div className="form-modal-group flex-1">
                     <label>Nombre Completo *</label>
                     <input type="text" className="form-modal-input" value={userForm.fullName} onChange={e => setUserForm(p => ({ ...p, fullName: e.target.value }))} required />
                   </div>
-                </div>
-                <div className="form-row">
                   <div className="form-modal-group flex-1">
                     <label>Email</label>
                     <input type="email" className="form-modal-input" value={userForm.email} onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))} />
                   </div>
+                </div>
+                <div className="form-row">
                   <div className="form-modal-group flex-1">
                     <label>Rol</label>
                     <select className="form-modal-select" value={userForm.role} onChange={e => setUserForm(p => ({ ...p, role: e.target.value }))}>
@@ -220,12 +213,6 @@ export default function ConfiguracionSistema({ regionId = 'national', regionName
                       <option value="Editor">Editor</option>
                       <option value="Soporte">Soporte</option>
                     </select>
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-modal-group flex-1">
-                    <label>Clave {editingUser && '(dejar vacío para mantener)'}</label>
-                    <input type="password" className="form-modal-input" value={userForm.password} onChange={e => setUserForm(p => ({ ...p, password: e.target.value }))} />
                   </div>
                   <div className="form-modal-group flex-1">
                     <label>Estado</label>

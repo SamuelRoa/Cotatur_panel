@@ -1,31 +1,42 @@
-import React, { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import api from './services/api'
 
-export const regionsList = [
-  { id: 'national', name: 'Visión Nacional' },
-  { id: 'los_andes', name: 'Región Los Andes' },
-  { id: 'llanos', name: 'Región Llanos' },
-  { id: 'eje', name: 'Eje: Zulia-Lara-Falcón' },
-  { id: 'central', name: 'Región Central' },
-  { id: 'amazonica', name: 'Región Amazónica' },
-  { id: 'insular', name: 'Región Insular' },
-  { id: 'oriental', name: 'Región Oriental' },
-]
+const nationalOption = { id: null, name: 'Visión Nacional' }
 
 const RegionContext = createContext()
 
-export function RegionProvider({ children, initialRegion = 'national', initialRole = 'superadmin', assignedRegion = 'los_andes' }) {
-  const [regionId, setRegionId] = useState(initialRegion === 'regional' ? assignedRegion : initialRegion)
-  const [role, setRole] = useState(initialRole) // 'superadmin' | 'regional'
+export function RegionProvider({ children, initialRole = 'superadmin' }) {
+  const [regions, setRegions] = useState([nationalOption])
+  const [regionId, setRegionId] = useState(null)
+  const [role, setRole] = useState(initialRole)
+  const [loading, setLoading] = useState(true)
 
-  const region = regionsList.find(r => r.id === regionId) || regionsList[0]
+  useEffect(() => {
+    api.get('/geo/regiones')
+      .then((res) => {
+        const data = res.data || res
+        const apiRegions = data.map((r) => ({
+          id: r.REGI_COD,
+          name: r.REGI_NOM,
+        }))
+        setRegions([nationalOption, ...apiRegions])
+        setLoading(false)
+      })
+      .catch(() => {
+        setLoading(false)
+      })
+  }, [])
+
+  const region = regions.find((r) => r.id === regionId) || regions[0]
 
   const value = {
-    regions: regionsList,
+    regions,
     regionId,
-    regionName: region.name,
+    regionName: region?.name || 'Visión Nacional',
     setRegionId,
     role,
     setRole,
+    loading,
   }
 
   return <RegionContext.Provider value={value}>{children}</RegionContext.Provider>
