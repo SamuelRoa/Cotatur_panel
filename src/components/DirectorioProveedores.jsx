@@ -73,8 +73,10 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
             <option value="Alojamiento Turístico">Alojamiento Turístico</option>
             <option value="Gastronomía Regional">Gastronomía Regional</option>
             <option value="Agencia de Viajes">Agencia de Viajes</option>
+            <option value="Agencia de Turismo">Agencia de Turismo</option>
             <option value="Transporte Turístico">Transporte Turístico</option>
             <option value="Guía de Turismo">Guía de Turismo</option>
+            <option value="Entretenimiento">Entretenimiento</option>
             <option value="Otros">Otros</option>
           </select>
           <select className="module-filter-select" value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setPage(1) }}>

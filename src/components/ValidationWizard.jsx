@@ -5,8 +5,11 @@ const CATEGORIES = [
   { value: 'Alojamiento Turístico', label: 'Alojamiento Turístico', icon: '🏨' },
   { value: 'Gastronomía Regional', label: 'Gastronomía Regional', icon: '🍽️' },
   { value: 'Agencia de Viajes', label: 'Agencia de Viajes', icon: '✈️' },
+  { value: 'Agencia de Turismo', label: 'Agencia de Turismo', icon: '🧳' },
   { value: 'Transporte Turístico', label: 'Transporte Turístico', icon: '🚌' },
   { value: 'Guía de Turismo', label: 'Guía de Turismo', icon: '🧭' },
+  { value: 'Entretenimiento', label: 'Entretenimiento', icon: '🎉' },
+  { value: 'Otro', label: 'Otro', icon: '📌' },
 ]
 
 const SERVICES = [
@@ -31,7 +34,7 @@ const DAYS = [
 ]
 
 const INITIAL_DATA = {
-  name: '', category: '', rif: '', description: '', email: '', phone: '',
+  name: '', category: '', rif: '', description: '', email: '', phone: '', website: '',
   openTime: '08:00', closeTime: '17:00', openDays: ['lun', 'mar', 'mie', 'jue', 'vie'],
   address: '', coordinates: '', branches: 1, capacity: 0, services: [],
   regionId: '', estadoId: '', municipioId: '',
@@ -210,6 +213,11 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
               <div className="form-modal-group">
                 <label>Correo Electrónico</label>
                 <input type="email" className="form-modal-input" placeholder="contacto@establecimiento.com" value={data.email} onChange={set('email')} />
+              </div>
+
+              <div className="form-modal-group">
+                <label>Sitio Web</label>
+                <input type="url" className="form-modal-input" placeholder="https://ejemplo.com" value={data.website} onChange={set('website')} />
               </div>
 
               <div className="form-modal-group">
