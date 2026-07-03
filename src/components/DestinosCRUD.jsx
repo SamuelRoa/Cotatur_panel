@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import RegionOverviewCard from './RegionOverviewCard.jsx'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
+import mockData from '../services/mockData.js'
 
 const tourismTypes = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
 const roadStatuses = ['Buena', 'Regular', 'Mala', 'En construcción']
@@ -17,6 +17,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
   const [filterRegion, setFilterRegion] = useState(regionId || '')
   const [form, setForm] = useState(emptyForm())
   const [detail, setDetail] = useState(null)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
 
   const [regions, setRegions] = useState([])
 
@@ -28,16 +31,34 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
 
   const loadDestinos = useCallback(() => {
     setLoading(true)
-    const params = {}
+    const params = { page, limit: 10 }
     const rId = filterRegion || regionId
     if (rId) params.regionId = rId
+    if (search) params.search = search
     destinosService.getAll(params)
       .then((res) => {
-        setDestinos(res.destinos || [])
+        const data = res.destinos || []
+        setDestinos(data)
+        setTotalItems(res.meta?.total ?? data.length)
+        setTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
+        if (data.length === 0) {
+          const mock = mockData.buildDestinos()
+          const filtered = rId ? mock.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mock
+          setDestinos(filtered)
+          setTotalItems(filtered.length)
+          setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
+        }
         setLoading(false)
       })
-      .catch(() => setLoading(false))
-  }, [regionId, filterRegion])
+      .catch(() => {
+        const mock = mockData.buildDestinos()
+        const filtered = rId ? mock.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mock
+        setDestinos(filtered)
+        setTotalItems(filtered.length)
+        setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
+        setLoading(false)
+      })
+  }, [regionId, filterRegion, page, search])
 
   useEffect(() => { loadDestinos() }, [loadDestinos])
 
@@ -112,14 +133,6 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
     }
   }
 
-  const filtered = destinos.filter(d =>
-    !search ||
-    (d.name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (d.municipality || '').toLowerCase().includes(search.toLowerCase()) ||
-    (d.estado || '').toLowerCase().includes(search.toLowerCase()) ||
-    (d.tourismType || '').toLowerCase().includes(search.toLowerCase())
-  )
-
   const getRegionName = (rId) => regions.find(r => r.REGI_COD === rId)?.REGI_NOM || ''
 
   if (loading) {
@@ -134,8 +147,8 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
           <p className="module-subtitle">Registro y edición de atractivos turísticos - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
-          <input type="text" className="module-search" placeholder="Buscar destino..." value={search} onChange={e => setSearch(e.target.value)} />
-          <select className="module-filter-select" value={filterRegion} onChange={e => setFilterRegion(e.target.value)}>
+          <input type="text" className="module-search" placeholder="Buscar destino..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+          <select className="module-filter-select" value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setPage(1) }}>
             <option value="">Todas las regiones</option>
             {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}
           </select>
@@ -144,10 +157,10 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
       </div>
 
       <div className="destinos-grid">
-        {filtered.length === 0 ? (
-          <RegionOverviewCard moduleKey="destinos" regionId={regionId} regionName={regionName} />
+        {destinos.length === 0 ? (
+          <div className="module-subtitle" style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 0' }}>No se encontraron destinos con los filtros actuales.</div>
         ) : (
-          filtered.map(d => (
+          destinos.map(d => (
             <div key={d.id} className="card-modern" onClick={() => setDetail(d)}>
               <div className="card-header">
                 <div className="card-tags">
@@ -180,6 +193,19 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
           ))
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="table-pagination-footer">
+          <span className="pagination-info">Página {page} de {totalPages} ({totalItems} destinos)</span>
+          <div className="pagination-controls">
+            <button className="btn-page-arrow" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+            {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(p => (
+              <button key={p} className={`btn-page-num ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
+            ))}
+            <button className="btn-page-arrow" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>

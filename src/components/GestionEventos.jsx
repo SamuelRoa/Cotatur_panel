@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import RegionOverviewCard from './RegionOverviewCard.jsx'
 import { eventosService } from '../services/eventos'
 import { geoService } from '../services/geo'
+import mockData from '../services/mockData.js'
 
 const eventTypes = ['Cultural', 'Feria', 'Gastronómico', 'Deportivo', 'Religioso', 'Musical']
 const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -24,6 +24,10 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
   const [filterRegion, setFilterRegion] = useState(regionId || '')
   const [form, setForm] = useState({ title: '', description: '', date: '', regionId: '', destinoId: '', eventType: 'Cultural', status: 'activo' })
   const [geoError, setGeoError] = useState('')
+  const [tablePage, setTablePage] = useState(1)
+  const [tableTotalPages, setTableTotalPages] = useState(1)
+  const [tableTotalItems, setTableTotalItems] = useState(0)
+  const [tableEvents, setTableEvents] = useState([])
 
   const [regions, setRegions] = useState([])
 
@@ -38,10 +42,34 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
     const rId = filterRegion || regionId
     if (rId) params.regionId = rId
     eventosService.getAll(params).then((res) => {
-      setEvents(res.eventos || [])
+      const data = res.eventos || []
+      if (data.length === 0) {
+        const mock = mockData.buildEventos()
+        setEvents(rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock)
+      } else {
+        setEvents(data)
+      }
       setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [regionId, filterRegion])
+    }).catch(() => {
+      const mock = mockData.buildEventos()
+      setEvents(rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock)
+      setLoading(false)
+    })
+    const tableParams = { page: tablePage, limit: 10 }
+    if (rId) tableParams.regionId = rId
+    eventosService.getAll(tableParams).then((res) => {
+      const data = res.eventos || []
+      setTableEvents(data)
+      setTableTotalItems(res.meta?.total ?? data.length)
+      setTableTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
+    }).catch(() => {
+      const mock = mockData.buildEventos()
+      const filtered = rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock
+      setTableEvents(filtered)
+      setTableTotalItems(filtered.length)
+      setTableTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
+    })
+  }, [regionId, filterRegion, tablePage])
 
   const openForm = (ev = null) => {
     if (ev) {
@@ -153,7 +181,7 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
 
       <div className="event-cards-list">
         {monthEvents.length === 0 ? (
-          <RegionOverviewCard moduleKey="eventos" regionId={regionId} regionName={regionName} />
+          <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No hay eventos programados para este mes.</div>
         ) : (
           monthEvents.map(ev => (
             <div key={ev.id} className="card-modern card-event" onClick={() => setDetail(ev)}>
@@ -208,7 +236,7 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
               </tr>
             </thead>
             <tbody>
-              {events.map(ev => (
+              {tableEvents.map(ev => (
                 <tr key={ev.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(ev)}>
                   <td className="table-td">{ev.title}</td>
                   <td className="table-td">{new Date(ev.date).toLocaleDateString('es-ES')}</td>
@@ -220,6 +248,18 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
             </tbody>
           </table>
         </div>
+        {tableTotalPages > 1 && (
+          <div className="table-pagination-footer">
+            <span className="pagination-info">Página {tablePage} de {tableTotalPages} ({tableTotalItems} eventos)</span>
+            <div className="pagination-controls">
+              <button className="btn-page-arrow" disabled={tablePage <= 1} onClick={() => setTablePage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+              {Array.from({ length: Math.min(tableTotalPages, 10) }, (_, i) => i + 1).map(p => (
+                <button key={p} className={`btn-page-num ${p === tablePage ? 'active' : ''}`} onClick={() => setTablePage(p)}>{p}</button>
+              ))}
+              <button className="btn-page-arrow" disabled={tablePage >= tableTotalPages} onClick={() => setTablePage(p => Math.min(tableTotalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showForm && (

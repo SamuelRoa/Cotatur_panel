@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { jsPDF } from 'jspdf'
 import cotaturLogo from './assets/cotatur_logo.png'
 import './App.css'
 import DestinosCRUD from './components/DestinosCRUD.jsx'
@@ -74,6 +75,25 @@ function App() {
   const [destinosList, setDestinosList] = useState([])
   const [eventosList, setEventosList] = useState([])
   const [rutasList, setRutasList] = useState([])
+  const [user, setUser] = useState(null)
+  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, content: '' })
+  const [tablePage, setTablePage] = useState(1)
+  const [tableSearch, setTableSearch] = useState('')
+  const [tableMerchants, setTableMerchants] = useState([])
+  const [tableTotalItems, setTableTotalItems] = useState(0)
+  const [tableTotalPages, setTableTotalPages] = useState(1)
+  const [tableLoading, setTableLoading] = useState(false)
+  const [pendingPage, setPendingPage] = useState(1)
+  const [pendingTotalPages, setPendingTotalPages] = useState(1)
+  const [pendingTotalItems, setPendingTotalItems] = useState(0)
+  const [pendingMerchantsList, setPendingMerchantsList] = useState([])
+
+  useEffect(() => {
+    const stored = localStorage.getItem('auth_user')
+    if (stored) {
+      try { setUser(JSON.parse(stored)) } catch { /* ignore */ }
+    }
+  }, [])
   const [loadingData, setLoadingData] = useState(true)
   
   useEffect(() => {
@@ -106,7 +126,57 @@ function App() {
       setLoadingData(false)
     }).catch(() => setLoadingData(false))
   }, [regionId, regionsLoading])
-  
+
+  const fetchTableData = async (page, search) => {
+    setTableLoading(true)
+    try {
+      const params = { page, limit: 10 }
+      if (regionId) params.regionId = regionId
+      if (search) params.search = search
+      const res = await prestadoresService.getAll(params)
+      const items = res.prestadores || []
+      const total = res.meta?.total ?? items.length
+      setTableMerchants(items)
+      setTableTotalItems(total)
+      setTableTotalPages(Math.max(1, Math.ceil(total / 10)))
+    } catch {
+      setTableMerchants([])
+      setTableTotalItems(0)
+      setTableTotalPages(1)
+    }
+    setTableLoading(false)
+  }
+
+  const fetchPending = async (page, search) => {
+    try {
+      const params = { page, limit: 10, status: 'pendiente' }
+      if (regionId) params.regionId = regionId
+      if (search) params.search = search
+      const res = await prestadoresService.getAll(params)
+      const items = res.prestadores || []
+      const total = res.meta?.total ?? items.length
+      setPendingMerchantsList(items)
+      setPendingTotalItems(total)
+      setPendingTotalPages(Math.max(1, Math.ceil(total / 10)))
+    } catch {
+      setPendingMerchantsList([])
+      setPendingTotalItems(0)
+      setPendingTotalPages(1)
+    }
+  }
+
+  useEffect(() => {
+    if (activeNav === 'dashboard') {
+      fetchTableData(tablePage, tableSearch)
+    }
+  }, [tablePage, tableSearch, regionId, activeNav])
+
+  useEffect(() => {
+    if (activeNav === 'validation') {
+      fetchPending(pendingPage, searchQuery)
+    }
+  }, [pendingPage, searchQuery, regionId, activeNav])
+
   // Modal states
   const [reviewMerchant, setReviewMerchant] = useState(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -115,8 +185,8 @@ function App() {
   // Interactive Modal Notification State
   const [modalInfo, setModalInfo] = useState({ isOpen: false, title: '', message: '' })
   
-  // Export modal state
-  const [showExportModal, setShowExportModal] = useState(false)
+  // PDF export state
+  const [exportingPdf, setExportingPdf] = useState(false)
 
   // Validation wizard state
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -135,6 +205,7 @@ function App() {
       const res = await authService.login({ email: username.trim(), password })
       localStorage.setItem('auth_token', res.data.accessToken)
       localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
+      setUser(res.data.usuario)
       setCurrentView('dashboard')
       setUsername('')
       setPassword('')
@@ -203,6 +274,8 @@ function App() {
       await prestadoresService.updateEstado(id, newStatus)
       setMerchants(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m))
       setReviewMerchant(null)
+      fetchTableData(tablePage, tableSearch)
+      fetchPending(pendingPage, searchQuery)
       triggerModal(
         newStatus === 'validado' ? 'Solicitud Aprobada' : 'Solicitud Rechazada',
         `El prestador turístico ha sido marcado como ${newStatus.toUpperCase()} exitosamente.`
@@ -213,40 +286,135 @@ function App() {
   }
 
   const handleWizardSubmit = async (merchantData) => {
+    const tipoMap = {
+      'Alojamiento Turístico': 'hosped',
+      'Gastronomía Regional': 'rest',
+      'Agencia de Viajes': 'agencia',
+      'Transporte Turístico': 'transp',
+      'Guía de Turismo': 'guia',
+    }
+    let payload = {
+      nombre: merchantData.name,
+      tipo: tipoMap[merchantData.category] || merchantData.category,
+      rif: merchantData.rif,
+    }
+    if (merchantData.email) payload.email = merchantData.email
+    if (merchantData.phone) payload.telefono = merchantData.phone
+    if (merchantData.address) payload.direccion = merchantData.address
+    if (merchantData.municipioId) payload.municipioId = parseInt(merchantData.municipioId)
+    if (merchantData.coordinates) {
+      const coords = merchantData.coordinates.match(/(-?\d+\.?\d*)/g)
+      if (coords && coords.length >= 2) {
+        payload.lat = parseFloat(coords[0])
+        payload.lon = parseFloat(coords[1])
+      }
+    }
     try {
-      const tipoMap = {
-        'Alojamiento Turístico': 'hosped',
-        'Gastronomía Regional': 'rest',
-        'Agencia de Viajes': 'agencia',
-        'Transporte Turístico': 'transp',
-        'Guía de Turismo': 'guia',
-      }
-      let lat = null, lon = null
-      if (merchantData.coordinates) {
-        const coords = merchantData.coordinates.match(/(-?\d+\.?\d*)/g)
-        if (coords && coords.length >= 2) {
-          lat = parseFloat(coords[0])
-          lon = parseFloat(coords[1])
-        }
-      }
-      const payload = {
-        nombre: merchantData.name,
-        tipo: tipoMap[merchantData.category] || merchantData.category,
-        email: merchantData.email,
-        telefono: merchantData.phone,
-        direccion: merchantData.address,
-        municipioId: merchantData.municipioId ? parseInt(merchantData.municipioId) : undefined,
-        lat,
-        lon,
-      }
       await prestadoresService.create(payload)
-      const params = regionId ? { regionId } : {}
-      const res = await prestadoresService.getAll(params)
-      setMerchants(res.prestadores || [])
       triggerModal('Registro Exitoso', `El prestador "${merchantData.name}" ha sido registrado y enviado para validación.`)
     } catch (err) {
       triggerModal('Error', err.message || 'Error al registrar prestador')
+      return
     }
+    try {
+      const params = regionId ? { regionId } : {}
+      const res = await prestadoresService.getAll(params)
+      setMerchants(res.prestadores || [])
+      fetchTableData(tablePage, tableSearch)
+    } catch {}
+  }
+
+  const handleExportPdf = () => {
+    setExportingPdf(true)
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pageW = pdf.internal.pageSize.getWidth()
+      const marg = 14
+      const maxW = pageW - marg * 2
+      let y = 20
+
+      const title = (t, s = 16) => { pdf.setFontSize(s); pdf.setFont(undefined, 'bold'); pdf.text(t, marg, y); y += 6 }
+      const subtitle = (t) => { pdf.setFontSize(11); pdf.setFont(undefined, 'bold'); pdf.setTextColor(80, 80, 80); pdf.text(t, marg, y); y += 5; pdf.setTextColor(0, 0, 0) }
+      const line = (t) => { pdf.setFontSize(10); pdf.setFont(undefined, 'normal'); const lines = pdf.splitTextToSize(t, maxW); pdf.text(lines, marg, y); y += lines.length * 4.5 + 1 }
+      const blank = (h = 4) => { y += h }
+      const hr = () => { y += 2; pdf.setDrawColor(200, 200, 200); pdf.line(marg, y, pageW - marg, y); y += 4 }
+
+      const dateStr = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
+      title('Reporte del Dashboard', 18)
+      line(`Sistema de Gesti\u00f3n Tur\u00edstica COTATUR`)
+      line(`Generado: ${dateStr}${regionId ? ` — Regi\u00f3n: ${regionName}` : ' — Visi\u00f3n Nacional'}`)
+      blank()
+      hr()
+
+      subtitle('1. Resumen General')
+      line(`Destinos Georreferenciados: ${totalGeoreferencedCount}`)
+      line(`Prestadores Registrados: ${totalRegisteredCount}`)
+      line(`Eventos Programados: ${dashboardStats.eventos}`)
+      line(`Rutas Tur\u00edsticas: ${totalRutasCount}`)
+      blank()
+      hr()
+
+      subtitle('2. Proveedores por Categor\u00eda')
+      const catEntries = Object.entries(categoryCounts)
+      if (catEntries.length === 0) {
+        line('No hay proveedores registrados.')
+      } else {
+        for (const [cat, count] of catEntries) {
+          line(`${catLabels[cat] || cat}: ${count}`)
+        }
+      }
+      blank()
+      hr()
+
+      subtitle('3. Estado de Validaciones')
+      line(`Validados: ${validados}`)
+      line(`Rechazados: ${rechazados}`)
+      line(`Pendientes: ${pendientes}`)
+      blank()
+      hr()
+
+      subtitle('4. Destinos por Regi\u00f3n')
+      const destRegionEntries = Object.entries(destinosByRegion)
+      if (destRegionEntries.length === 0) {
+        line('No hay destinos registrados.')
+      } else {
+        for (const [reg, count] of destRegionEntries) {
+          line(`${reg}: ${count} destino${count !== 1 ? 's' : ''}`)
+        }
+      }
+      blank()
+      hr()
+
+      subtitle('5. Rutas por Regi\u00f3n')
+      const rutaRegionEntries = Object.entries(rutasByRegion)
+      if (rutaRegionEntries.length === 0) {
+        line('No hay rutas registradas.')
+      } else {
+        for (const [reg, count] of rutaRegionEntries) {
+          line(`${reg}: ${count} ruta${count !== 1 ? 's' : ''}`)
+        }
+      }
+      blank()
+      hr()
+
+      subtitle('6. Eventos')
+      line(`Este mes: ${eventosEsteMes}`)
+      line(`Pr\u00f3ximos: ${eventosProximos}`)
+      line(`Pasados: ${eventosPasados}`)
+      blank()
+      hr()
+
+      y += 4
+      pdf.setFontSize(8)
+      pdf.setTextColor(150, 150, 150)
+      pdf.text(`Reporte generado autom\u00e1ticamente por COTATUR — ${new Date().toISOString().slice(0, 10)}`, marg, y)
+
+      pdf.save(`Reporte-COTATUR-${new Date().toISOString().slice(0, 10)}.pdf`)
+    } catch (err) {
+      triggerModal('Error', 'Error al generar PDF: ' + err.message)
+    }
+    setExportingPdf(false)
   }
 
   const handleAddMerchantSubmit = async (e) => {
@@ -271,6 +439,7 @@ function App() {
       const params = regionId ? { regionId } : {}
       const res = await prestadoresService.getAll(params)
       setMerchants(res.prestadores || [])
+      fetchTableData(tablePage, tableSearch)
       setIsAddModalOpen(false)
       setNewMerchant({ name: '', category: 'Alojamiento Turístico', rif: '' })
       triggerModal(
@@ -312,6 +481,16 @@ function App() {
     return (!q || name.includes(q) || rif.includes(q) || category.includes(q))
   })
 
+  const pendingMerchants = merchants.filter(m => {
+    const status = (m.status || '').toLowerCase()
+    if (status !== 'pendiente') return false
+    const name = (m.PROV_NOM || m.name || '').toLowerCase()
+    const rif = (m.PROV_RIF || m.rif || '').toLowerCase()
+    const category = (m.PROV_TSE || m.category || '').toLowerCase()
+    const q = searchQuery.toLowerCase()
+    return (!q || name.includes(q) || rif.includes(q) || category.includes(q))
+  })
+
   const totalRegisteredCount = dashboardStats.prestadores
   const totalGeoreferencedCount = dashboardStats.destinos
   const totalAlertsCount = 0
@@ -328,6 +507,7 @@ function App() {
     'Agencia de Viajes': 'orange',
     'Transporte Turístico': 'teal',
     'Guía de Turismo': 'purple',
+    'Otros': 'gray',
   }
   const catLabels = {
     'Alojamiento Turístico': 'Alojamiento',
@@ -335,6 +515,7 @@ function App() {
     'Agencia de Viajes': 'Agencias',
     'Transporte Turístico': 'Transporte',
     'Guía de Turismo': 'Guías',
+    'Otros': 'Otros',
   }
 
   const validados = merchants.filter(m => m.status === 'validado').length
@@ -407,15 +588,6 @@ function App() {
                 <div style={{fontSize:42,fontWeight:800,color:'var(--color-primary)'}}>MINTUR</div>
               </div>
               <h2 className="brand-subtitle">Plataforma Georreferenciada Nacional</h2>
-
-              {/* Collapsible demo credentials box */}
-              <div className="demo-credentials-box">
-                <div className="demo-credentials-header">Acceso de Demostración</div>
-                <div className="demo-credentials-text">
-                  Usuario: <code>admin</code> o <code>admin@cotatur.gob.ve</code><br />
-                  Clave: <code>cotatur2026</code>
-                </div>
-              </div>
 
               {/* Form */}
               <form className="login-form" onSubmit={handleLoginSubmit}>
@@ -543,42 +715,7 @@ function App() {
                 </div>
               </form>
 
-              {/* Secondary Portal Access Links */}
-              <div className="secondary-links-container">
-                <a
-                  href="#tecnico"
-                  className="secondary-access-link"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    triggerModal(
-                      'Acceso Técnico COTATUR',
-                      'Esta área está restringida para el personal técnico encargado de la validación georreferenciada y mantenimiento del sistema.'
-                    )
-                  }}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-                  </svg>
-                  Acceso Técnico COTATUR
-                </a>
-                <a
-                  href="#proveedores"
-                  className="secondary-access-link"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    triggerModal(
-                      'Ingreso de Proveedores Locales',
-                      'Área dedicada para que las posadas, hoteles, restaurantes y prestadores de servicios turísticos del Táchira gestionen su oferta.'
-                    )
-                  }}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    <polyline points="9 22 9 12 15 12 15 22" />
-                  </svg>
-                  Ingreso de Proveedores Locales
-                </a>
-              </div>
+
             </div>
 
             {/* Dark Green Banner at Card Footer */}
@@ -614,21 +751,6 @@ function App() {
             </p>
           </footer>
 
-          {/* Floating Geographic Map Widget (Bottom Right) */}
-          <div
-            className="floating-map-widget"
-            title="Ver Mapa Geoturismo"
-            onClick={() => triggerModal(
-              'Geolocalización Turística',
-              'La plataforma georreferenciada de COTATUR permite mapear en tiempo real la oferta turística y el patrimonio cultural del Táchira.'
-            )}
-          >
-            <div className="map-widget-content">
-              <div className="map-widget-overlay">
-                <span className="map-widget-label">Georreferencia</span>
-              </div>
-            </div>
-          </div>
         </motion.div>
       ) : currentView === 'register' ? (
         <motion.div
@@ -922,12 +1044,6 @@ function App() {
             </nav>
             
             <div className="sidebar-footer-actions">
-              <button className="btn-sidebar-add" onClick={() => setIsAddModalOpen(true)}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                <span>+ Nuevo Punto</span>
-              </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'soporte' ? 'active' : ''}`} 
                 onClick={() => setActiveNav('soporte')}
@@ -940,17 +1056,19 @@ function App() {
                 </svg>
                 <span>Soporte</span>
               </button>
-              <button 
-                className={`sidebar-nav-item ${activeNav === 'configuracion' ? 'active' : ''}`} 
-                onClick={() => setActiveNav('configuracion')}
-                style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </svg>
-                <span>Configuración</span>
-              </button>
+              {(user?.rolId ?? 55) === 55 && (
+                <button 
+                  className={`sidebar-nav-item ${activeNav === 'configuracion' ? 'active' : ''}`} 
+                  onClick={() => setActiveNav('configuracion')}
+                  style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                  <span>Configuración</span>
+                </button>
+              )}
             </div>
           </aside>
 
@@ -961,7 +1079,7 @@ function App() {
               <h2 className="header-portal-title">MINTUR Portal</h2>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={role !== 'superadmin'}>
+                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={(user?.rolId ?? 55) !== 55}>
                   {regions.map(r => <option key={r.id ?? 'national'} value={r.id ?? ''}>{r.name}</option>)}
                 </select>
 
@@ -999,7 +1117,8 @@ function App() {
                   className="header-profile-widget" 
                   onClick={() => triggerModal(
                     'Información del Usuario',
-                    'Usuario: admin\nNombre: Lic. Ricardo Salas\nCargo: Director Regional\nCorreo: admin@cotatur.gob.ve\nRol: Administrador del Sistema'
+                    user ? `Usuario: ${user.email || user.username || '—'}\nNombre: ${user.nombre || user.fullName || '—'}\nCargo: ${user.cargo || '—'}\nCorreo: ${user.email || '—'}\nRol: ${user.rol || role || '—'}`
+                          : 'Usuario no identificado'
                   )}
                   title="Información del usuario"
                 >
@@ -1010,8 +1129,8 @@ function App() {
                     </svg>
                   </div>
                   <div className="profile-info-text">
-                    <span className="profile-name">Lic. Ricardo Salas</span>
-                    <span className="profile-role">Director Regional</span>
+                    <span className="profile-name">{user?.nombre || user?.fullName || user?.email || 'Usuario'}</span>
+                    <span className="profile-role">{user?.cargo || user?.rol || role || '—'}</span>
                   </div>
                 </button>
 
@@ -1021,6 +1140,7 @@ function App() {
                   onClick={() => {
                     localStorage.removeItem('auth_token')
                     localStorage.removeItem('auth_user')
+                    setUser(null)
                     setCurrentView('login')
                   }}
                   title="Cerrar Sesión"
@@ -1066,9 +1186,9 @@ function App() {
                               </div>
                             )}
                           </div>
-                          <button className="btn-export" onClick={() => setShowExportModal(true)}>
+                          <button className="btn-export" onClick={handleExportPdf} disabled={exportingPdf}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                            Exportar Reporte
+                            {exportingPdf ? 'Generando...' : 'Descargar Reporte'}
                           </button>
                         </div>
                       </section>
@@ -1089,86 +1209,105 @@ function App() {
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Rutas Turísticas</span><span className="metric-value">{totalRutasCount}</span><span className="metric-trend orange">⟐ {Object.keys(rutasByRegion).length} regiones</span></div><div className="metric-icon-box orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg></div></div>
                       </section>
                       <section className="charts-section">
-                        <div className="chart-card"><h4 className="chart-title">Proveedores por Categoría</h4><div className="chart-bars">
-                          {Object.entries(categoryCounts).length === 0 ? (
-                            <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
-                          ) : (
-                            Object.entries(categoryCounts).map(([cat, count]) => (
-                              <div key={cat} className="chart-bar-item">
-                                <span className="chart-bar-label">{catLabels[cat] || cat}</span>
-                                <div className="chart-bar-track">
-                                  <div className={`chart-bar-fill ${catColors[cat] || 'gray'}`} style={{width: `${Math.round(count / maxCatCount * 100)}%`}}>
-                                    <span>{Math.round(count / maxCatCount * 100)}%</span>
+                        <div className="chart-card" style={{cursor:'pointer'}} onClick={() => setActiveNav('proveedores')} onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `Ver proveedores por categoría` }) }} onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                          <h4 className="chart-title">Proveedores por Categoría</h4>
+                          <div className="chart-bars">
+                            {Object.entries(categoryCounts).length === 0 ? (
+                              <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
+                            ) : (
+                              Object.entries(categoryCounts).map(([cat, count]) => (
+                                <div key={cat} className="chart-bar-item"
+                                  onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `${catLabels[cat] || cat}: ${count} proveedores` }) }}
+                                  onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                                  <span className="chart-bar-label">{catLabels[cat] || cat}</span>
+                                  <div className="chart-bar-track">
+                                    <div className={`chart-bar-fill ${catColors[cat] || 'gray'}`} style={{width: `${Math.round(count / maxCatCount * 100)}%`}}>
+                                      <span>{count}</span>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))
-                          )}
-                        </div></div>
-                        <div className="chart-card"><h4 className="chart-title">Destinos por Región</h4><div className="chart-bars">
-                          {Object.entries(destinosByRegion).length === 0 ? (
-                            <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
-                          ) : (
-                            Object.entries(destinosByRegion).map(([reg, count]) => (
-                              <div key={reg} className="chart-bar-item">
-                                <span className="chart-bar-label">{reg}</span>
-                                <div className="chart-bar-track">
-                                  <div className="chart-bar-fill blue" style={{width: `${Math.round(count / maxDestinosRegion * 100)}%`}}>
-                                    <span>{count}</span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="chart-card chart-card-vertical" style={{cursor:'pointer'}} onClick={() => setActiveNav('destinos')} onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `Ver destinos por región` }) }} onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                          <h4 className="chart-title">Destinos por Región</h4>
+                          <div className="chart-bars-vertical">
+                            {Object.entries(destinosByRegion).length === 0 ? (
+                              <div className="chart-bar-item-vertical"><span>Sin datos</span></div>
+                            ) : (
+                              Object.entries(destinosByRegion).map(([reg, count]) => (
+                                <div key={reg} className="chart-bar-item-vertical"
+                                  onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `${reg}: ${count} destinos` }) }}
+                                  onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                                  <div className="chart-bar-vertical-fill blue" style={{height: `${Math.round(count / maxDestinosRegion * 100)}%`}}>
+                                    <span className="chart-bar-vertical-count">{count}</span>
+                                  </div>
+                                  <span className="chart-bar-vertical-label">{reg}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="chart-card" style={{cursor:'pointer'}} onClick={() => setActiveNav('route')} onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `Ver rutas por región` }) }} onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                          <h4 className="chart-title">Rutas por Región</h4>
+                          <div className="chart-bars">
+                            {Object.entries(rutasByRegion).length === 0 ? (
+                              <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
+                            ) : (
+                              Object.entries(rutasByRegion).map(([reg, count]) => (
+                                <div key={reg} className="chart-bar-item"
+                                  onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `${reg}: ${count} rutas` }) }}
+                                  onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                                  <span className="chart-bar-label">{reg}</span>
+                                  <div className="chart-bar-track">
+                                    <div className="chart-bar-fill orange" style={{width: `${Math.round(count / maxRutasRegion * 100)}%`}}>
+                                      <span>{count}</span>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))
-                          )}
-                        </div></div>
-                        <div className="chart-card"><h4 className="chart-title">Rutas por Región</h4><div className="chart-bars">
-                          {Object.entries(rutasByRegion).length === 0 ? (
-                            <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
-                          ) : (
-                            Object.entries(rutasByRegion).map(([reg, count]) => (
-                              <div key={reg} className="chart-bar-item">
-                                <span className="chart-bar-label">{reg}</span>
-                                <div className="chart-bar-track">
-                                  <div className="chart-bar-fill orange" style={{width: `${Math.round(count / maxRutasRegion * 100)}%`}}>
-                                    <span>{count}</span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="chart-card" style={{cursor:'pointer'}} onClick={() => setActiveNav('eventos')} onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `Ver eventos programados` }) }} onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                          <h4 className="chart-title">Eventos</h4>
+                          <div className="chart-donut">
+                            <div className="donut-ring"><svg viewBox="0 0 36 36" className="donut-svg"><path className="donut-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment blue" strokeDasharray={`${eventosEsteMesPct},${100 - eventosEsteMesPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment orange" strokeDasharray={`${eventosProximosPct},${100 - eventosProximosPct}`} strokeDashoffset={`${-eventosEsteMesPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment gray" strokeDasharray={`${eventosPasadosPct},${100 - eventosPasadosPct}`} strokeDashoffset={`${-(eventosEsteMesPct + eventosProximosPct)}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg><div className="donut-center">{eventosList.length}</div></div>
+                            <div className="donut-legend"><div className="legend-item"><span className="legend-dot blue"></span>Este mes: {eventosEsteMes}</div><div className="legend-item"><span className="legend-dot orange"></span>Próximos: {eventosProximos}</div><div className="legend-item"><span className="legend-dot gray"></span>Pasados: {eventosPasados}</div></div>
+                          </div>
+                        </div>
+                        <div className="chart-card chart-card-full" style={{cursor:'pointer'}} onClick={() => setActiveNav('validation')} onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `Ver actividad de validación` }) }} onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                          <h4 className="chart-title">Actividad Reciente</h4>
+                          <div className="timeline-chart">
+                            {merchants.length === 0 ? (
+                              <div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content">Sin actividad reciente</div></div>
+                            ) : (
+                              [...merchants].reverse().slice(0, 5).map(m => (
+                                <div key={m.id} className="timeline-item"
+                                  onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `${m.name} - ${m.status === 'validado' ? 'Validado' : m.status === 'rechazado' ? 'Rechazado' : 'Pendiente'}` }) }}
+                                  onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                                  <div className={`timeline-dot ${m.status === 'validado' ? 'green' : m.status === 'rechazado' ? 'red' : 'yellow'}`}></div>
+                                  <div className="timeline-content">
+                                    <strong>{m.name}</strong>
+                                    {m.status === 'validado' ? ' fue validado' : m.status === 'rechazado' ? ' fue rechazado' : ' está pendiente'}
                                   </div>
                                 </div>
-                              </div>
-                            ))
-                          )}
-                        </div></div>
-                        <div className="chart-card"><h4 className="chart-title">Estado de Validaciones</h4><div className="chart-donut">
-                          <div className="donut-ring"><svg viewBox="0 0 36 36" className="donut-svg"><path className="donut-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment green" strokeDasharray={`${validadosPct},${100 - validadosPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment red" strokeDasharray={`${rechazadosPct},${100 - rechazadosPct}`} strokeDashoffset={`${-validadosPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment yellow" strokeDasharray={`${pendientesPct},${100 - pendientesPct}`} strokeDashoffset={`${-(validadosPct + rechazadosPct)}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg><div className="donut-center">{merchants.length}</div></div>
-                          <div className="donut-legend"><div className="legend-item"><span className="legend-dot green"></span>Validados: {validados}</div><div className="legend-item"><span className="legend-dot red"></span>Rechazados: {rechazados}</div><div className="legend-item"><span className="legend-dot yellow"></span>Pendientes: {pendientes}</div></div>
-                        </div></div>
-                        <div className="chart-card"><h4 className="chart-title">Eventos</h4><div className="chart-donut">
-                          <div className="donut-ring"><svg viewBox="0 0 36 36" className="donut-svg"><path className="donut-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment blue" strokeDasharray={`${eventosEsteMesPct},${100 - eventosEsteMesPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment orange" strokeDasharray={`${eventosProximosPct},${100 - eventosProximosPct}`} strokeDashoffset={`${-eventosEsteMesPct}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path className="donut-segment gray" strokeDasharray={`${eventosPasadosPct},${100 - eventosPasadosPct}`} strokeDashoffset={`${-(eventosEsteMesPct + eventosProximosPct)}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg><div className="donut-center">{eventosList.length}</div></div>
-                          <div className="donut-legend"><div className="legend-item"><span className="legend-dot blue"></span>Este mes: {eventosEsteMes}</div><div className="legend-item"><span className="legend-dot orange"></span>Próximos: {eventosProximos}</div><div className="legend-item"><span className="legend-dot gray"></span>Pasados: {eventosPasados}</div></div>
-                        </div></div>
-                        <div className="chart-card chart-card-full"><h4 className="chart-title">Actividad Reciente</h4><div className="timeline-chart">
-                          {merchants.length === 0 ? (
-                            <div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content">Sin actividad reciente</div></div>
-                          ) : (
-                            [...merchants].reverse().slice(0, 5).map(m => (
-                              <div key={m.id} className="timeline-item">
-                                <div className={`timeline-dot ${m.status === 'validado' ? 'green' : m.status === 'rechazado' ? 'red' : 'yellow'}`}></div>
-                                <div className="timeline-content">
-                                  <strong>{m.name}</strong>
-                                  {m.status === 'validado' ? ' fue validado' : m.status === 'rechazado' ? ' fue rechazado' : ' está pendiente'}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div></div>
+                              ))
+                            )}
+                          </div>
+                        </div>
                       </section>
                       <section className="table-section">
                         <div className="table-section-header"><div className="table-header-title"><h4>Solicitudes de Proveedores</h4><p>Registros más recientes de prestadores turísticos.</p></div><div className="table-header-controls">
-                          <button className="btn-table-control" onClick={() => triggerModal('Filtrar', 'Configuración de filtros avanzados para la tabla.')} title="Filtrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></svg></button>
-                          <button className="btn-table-control" onClick={() => triggerModal('Acciones Adicionales', 'Opciones de edición en lote, eliminación o copiado.')} title="Más Opciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" /></svg></button>
+                          <div className="table-search-wrapper">
+                            <svg className="table-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                            <input type="text" className="table-search-input" placeholder="Buscar por nombre, RIF o categoría..." value={tableSearch} onChange={e => { setTableSearch(e.target.value); setTablePage(1) }} />
+                          </div>
                         </div></div>
                         <div className="table-responsive"><table className="dashboard-table"><thead><tr><th className="table-th">Nombre del Comercio</th><th className="table-th">RIF</th><th className="table-th">Fecha</th><th className="table-th">Estado</th><th className="table-th">Acciones</th></tr></thead><tbody>
-                          {filteredMerchants.length === 0 ? (<tr><td colSpan="5" className="table-td" style={{textAlign:'center',color:'var(--color-text-light)'}}>No se encontraron registros.</td></tr>) : (
-                            [...filteredMerchants].reverse().map((merchant) => (
+                          {tableLoading ? (<tr><td colSpan="5" className="table-td" style={{textAlign:'center',color:'var(--color-text-light)'}}>Cargando...</td></tr>) : tableMerchants.length === 0 ? (<tr><td colSpan="5" className="table-td" style={{textAlign:'center',color:'var(--color-text-light)'}}>No se encontraron registros.</td></tr>) : (
+                            tableMerchants.map((merchant) => (
                               <tr key={merchant.id}>
                                 <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',fontWeight:'bold'}}>{merchant.category.includes('Alojamiento') ? '🏨' : merchant.category.includes('Gastronomía') ? '🍽️' : '✈️'}</div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
                                 <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
@@ -1179,12 +1318,16 @@ function App() {
                             ))
                           )}
                         </tbody></table></div>
-                        <div className="table-pagination-footer"><span className="pagination-info">Mostrando {filteredMerchants.length} de {merchants.length} solicitudes</span><div className="pagination-controls">
-                          <button className="btn-page-arrow" disabled title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
-                          <button className="btn-page-arrow" disabled title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+                        <div className="table-pagination-footer"><span className="pagination-info">Mostrando página {tablePage} de {tableTotalPages} ({tableTotalItems} solicitudes)</span><div className="pagination-controls">
+                          <button className="btn-page-arrow" disabled={tablePage <= 1} onClick={() => setTablePage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+                          {Array.from({ length: tableTotalPages }, (_, i) => i + 1).map(p => (
+                            <button key={p} className={`btn-page-num ${p === tablePage ? 'active' : ''}`} onClick={() => setTablePage(p)}>{p}</button>
+                          ))}
+                          <button className="btn-page-arrow" disabled={tablePage >= tableTotalPages} onClick={() => setTablePage(p => Math.min(tableTotalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
                         </div></div>
                       </section>
                       <footer style={{marginTop:'24px',textAlign:'center',fontSize:'12px',color:'var(--color-text-light)'}}>© 2026 MINTUR - Ministerio del Poder Popular para el Turismo.</footer>
+                      {tooltip.visible && <div className="chart-tooltip" style={{left: tooltip.x + 10, top: tooltip.y - 10}}>{tooltip.content}</div>}
                     </div>
                   case 'destinos':
                     return <DestinosCRUD regionId={regionId} regionName={regionName} />
@@ -1209,15 +1352,24 @@ function App() {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                             Nuevo Prestador
                           </button>
-                          <input type="text" className="module-search" placeholder="Buscar comercio o RIF..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                          <input type="text" className="module-search" placeholder="Buscar comercio o RIF..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPendingPage(1) }} />
                         </div>
                       </div>
-                      {filteredMerchants.length === 0 ? (
-                        <RegionOverviewCard moduleKey="proveedores" regionId={regionId} regionName={regionName} />
+                      {pendingMerchantsList.length === 0 ? (
+                        <div className="module-container">
+                          <div className="empty-state">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="48" height="48" style={{ opacity: 0.3, marginBottom: 12 }}>
+                              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                              <polyline points="22 4 12 14.01 9 11.01" />
+                            </svg>
+                            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600, color: 'var(--color-text-muted)' }}>Sin solicitudes pendientes</h3>
+                            <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-light)' }}>No hay prestadores esperando validación. Use "Nuevo Prestador" para registrar uno manualmente.</p>
+                          </div>
+                        </div>
                       ) : (
                         <section className="table-section">
                           <div className="table-responsive"><table className="dashboard-table"><thead><tr><th className="table-th">Nombre del Comercio</th><th className="table-th">RIF</th><th className="table-th">Fecha</th><th className="table-th">Estado</th><th className="table-th">Acciones</th></tr></thead><tbody>
-                            {[...filteredMerchants].reverse().map((merchant) => (
+                            {pendingMerchantsList.map((merchant) => (
                               <tr key={merchant.id}>
                                 <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',fontWeight:'bold'}}>{merchant.category.includes('Alojamiento') ? '🏨' : merchant.category.includes('Gastronomía') ? '🍽️' : '✈️'}</div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
                                 <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
@@ -1227,6 +1379,18 @@ function App() {
                               </tr>
                             ))}
                           </tbody></table></div>
+                          {pendingTotalPages > 1 && (
+                            <div className="table-pagination-footer">
+                              <span className="pagination-info">Página {pendingPage} de {pendingTotalPages} ({pendingTotalItems} solicitudes)</span>
+                              <div className="pagination-controls">
+                                <button className="btn-page-arrow" disabled={pendingPage <= 1} onClick={() => setPendingPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+                                {Array.from({ length: Math.min(pendingTotalPages, 10) }, (_, i) => i + 1).map(p => (
+                                  <button key={p} className={`btn-page-num ${p === pendingPage ? 'active' : ''}`} onClick={() => setPendingPage(p)}>{p}</button>
+                                ))}
+                                <button className="btn-page-arrow" disabled={pendingPage >= pendingTotalPages} onClick={() => setPendingPage(p => Math.min(pendingTotalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+                              </div>
+                            </div>
+                          )}
                         </section>
                       )}
                     </div>
@@ -1368,44 +1532,7 @@ function App() {
       )}
       </AnimatePresence>
 
-      {/* Export Modal */}
-      <AnimatePresence>
-      {showExportModal && (
-        <motion.div
-          key="export-modal"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="modal-overlay"
-          onClick={() => setShowExportModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Exportar Reporte</h3>
-              <button className="modal-close-btn" onClick={() => setShowExportModal(false)}>&times;</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ marginBottom: '16px' }}>Seleccione el formato para exportar los datos actuales:</p>
-              <div className="export-options">
-                <button className="export-option-btn" onClick={() => { setShowExportModal(false); triggerModal('Reporte Exportado', 'El archivo PDF ha sido generado exitosamente con los datos de prestadores, destinos y estadísticas.') }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="28" height="28"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
-                  <span className="export-option-label">PDF</span>
-                  <span className="export-option-desc">Documento portátil con gráficos y tablas</span>
-                </button>
-                <button className="export-option-btn" onClick={() => { setShowExportModal(false); triggerModal('Reporte Exportado', 'El archivo Excel (.xlsx) ha sido generado con los datos tabulados de prestadores turísticos.') }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="28" height="28"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="16" x2="16" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
-                  <span className="export-option-label">Excel</span>
-                  <span className="export-option-desc">Hoja de cálculo con datos exportables</span>
-                </button>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-modal-action cancel" onClick={() => setShowExportModal(false)}>Cancelar</button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-      </AnimatePresence>
+
 
       {/* Premium Notification Modal Overlay */}
       <AnimatePresence>

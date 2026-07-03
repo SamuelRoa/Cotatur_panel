@@ -316,8 +316,8 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
 
           {step === 3 && (
             <div className="wizard-step-content">
-              <h4 className="wizard-step-title">Multimedia</h4>
-              <p className="wizard-step-desc">Fotografías, logo y documentos del establecimiento.</p>
+              <h4 className="wizard-step-title">Multimedia <span style={{ fontWeight: 400, fontSize: 13, color: 'var(--color-text-light)' }}>(opcional)</span></h4>
+              <p className="wizard-step-desc">Fotografías, logo y documentos del establecimiento. Puede omitir este paso y guardar el registro.</p>
 
               <div className="upload-section">
                 <label className="upload-label">Foto Principal</label>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import RegionOverviewCard from './RegionOverviewCard.jsx'
 import { contenidoService } from '../services/contenido'
+import mockData from '../services/mockData.js'
 
 const typeLabels = { noticia: 'Noticia', comunicado: 'Comunicado', ficha: 'Ficha de Destino' }
 
@@ -13,16 +13,36 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
   const [filterType, setFilterType] = useState('todas')
   const [search, setSearch] = useState('')
   const [form, setForm] = useState({ titulo: '', contenido: '', tipo: 'noticia', published: true })
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
 
   useEffect(() => {
     setLoading(true)
-    contenidoService.getInstitucional()
+    const params = { page, limit: 10 }
+    if (search) params.search = search
+    if (filterType !== 'todas') params.type = filterType
+    contenidoService.getInstitucional(params)
       .then((res) => {
-        setPosts(res.contenidos || [])
+        const data = res.contenidos || []
+        setPosts(data)
+        setTotalItems(res.meta?.total ?? data.length)
+        setTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
+        if (data.length === 0) {
+          setPosts(mockData.buildContenidos())
+          setTotalItems(mockData.buildContenidos().length)
+          setTotalPages(Math.max(1, Math.ceil(mockData.buildContenidos().length / 10)))
+        }
         setLoading(false)
       })
-      .catch(() => setLoading(false))
-  }, [])
+      .catch(() => {
+        const mock = mockData.buildContenidos()
+        setPosts(mock)
+        setTotalItems(mock.length)
+        setTotalPages(Math.max(1, Math.ceil(mock.length / 10)))
+        setLoading(false)
+      })
+  }, [page, search, filterType])
 
   const openForm = (post = null) => {
     if (post) {
@@ -64,14 +84,6 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
     }
   }
 
-  const filtered = posts.filter(p => {
-    const matchType = filterType === 'todas' || p.tipo === filterType
-    const matchSearch = !search ||
-      (p.titulo || '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.descripcion || '').toLowerCase().includes(search.toLowerCase())
-    return matchType && matchSearch
-  })
-
   if (loading) {
     return <div className="module-container"><p className="module-subtitle">Cargando contenido...</p></div>
   }
@@ -84,8 +96,8 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
           <p className="module-subtitle">Contenido institucional y fichas públicas - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
-          <input type="text" className="module-search" placeholder="Buscar contenido..." value={search} onChange={e => setSearch(e.target.value)} />
-          <select className="module-filter-select" value={filterType} onChange={e => setFilterType(e.target.value)}>
+          <input type="text" className="module-search" placeholder="Buscar contenido..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+          <select className="module-filter-select" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1) }}>
             <option value="todas">Todo</option>
             <option value="noticia">Noticias</option>
             <option value="comunicado">Comunicados</option>
@@ -96,10 +108,10 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
       </div>
 
       <div className="post-list">
-        {filtered.length === 0 ? (
-          <RegionOverviewCard moduleKey="difusion" regionId={regionId} regionName={regionName} />
+        {posts.length === 0 ? (
+          <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No se encontraron publicaciones con los filtros actuales.</div>
         ) : (
-          filtered.map(p => (
+          posts.map(p => (
             <div key={p.id} className="post-card" onClick={() => setDetail(p)}>
               <div className="post-card-left">
                 <span className={`post-type-badge ${p.tipo}`}>{typeLabels[p.tipo] || p.tipo}</span>
@@ -121,6 +133,19 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
           ))
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="table-pagination-footer">
+          <span className="pagination-info">Página {page} de {totalPages} ({totalItems} registros)</span>
+          <div className="pagination-controls">
+            <button className="btn-page-arrow" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+            {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(p => (
+              <button key={p} className={`btn-page-num ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
+            ))}
+            <button className="btn-page-arrow" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>

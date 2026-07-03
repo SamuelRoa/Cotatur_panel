@@ -1427,6 +1427,70 @@
   text-decoration: underline;
 }
 
+/* Table search */
+.table-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-input-border);
+  border-radius: 8px;
+  padding: 0 12px;
+  transition: border-color var(--transition-fast);
+}
+
+.table-search-wrapper:focus-within {
+  border-color: var(--color-primary);
+}
+
+.table-search-icon {
+  flex-shrink: 0;
+  color: var(--color-text-light);
+}
+
+.table-search-input {
+  border: none;
+  outline: none;
+  background: none;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--color-text-main);
+  min-width: 220px;
+}
+
+.table-search-input::placeholder {
+  color: var(--color-text-light);
+}
+
+/* Page number buttons */
+.btn-page-num {
+  background-color: var(--color-white);
+  border: 1px solid var(--color-input-border);
+  border-radius: 6px;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+  padding: 0 6px;
+}
+
+.btn-page-num:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-page-num.active {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-white);
+}
+
 .table-pagination-footer {
   padding: 16px 32px;
   display: flex;
@@ -1473,40 +1537,6 @@
 .btn-page-arrow svg {
   width: 14px;
   height: 14px;
-}
-
-/* Collapsible demo credentials box */
-.demo-credentials-box {
-  width: 100%;
-  background: linear-gradient(135deg, #f7f9f6, #f0f5ef);
-  border: 1px dashed rgba(76, 140, 36, 0.3);
-  border-radius: 12px;
-  padding: 12px 16px;
-  margin-bottom: 4px;
-  text-align: left;
-  animation: fadeInUp 0.5s ease-out 0.2s both;
-}
-
-.demo-credentials-header {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-primary);
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-
-.demo-credentials-text {
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-}
-
-.demo-credentials-text code {
-  background-color: rgba(76, 140, 36, 0.08);
-  color: var(--color-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 600;
 }
 
 /* Modals for validation and adding points */
@@ -2905,6 +2935,7 @@
 .charts-section .chart-card:nth-child(1) { animation-delay: 0.15s; }
 .charts-section .chart-card:nth-child(2) { animation-delay: 0.25s; }
 .charts-section .chart-card:nth-child(3) { animation-delay: 0.35s; }
+.charts-section .chart-card:nth-child(4) { animation-delay: 0.45s; }
 
 .chart-card:hover {
   transform: translateY(-3px);
@@ -2977,6 +3008,93 @@
 .chart-bar-fill.orange { background: linear-gradient(90deg, #F37021, #F59E3E); }
 .chart-bar-fill.teal { background: linear-gradient(90deg, #00A3A6, #33C5C8); }
 .chart-bar-fill.purple { background: linear-gradient(90deg, #7E2E90, #A855B8); }
+.chart-bar-fill.gray { background: linear-gradient(90deg, #6B7280, #9CA3AF); }
+
+/* Vertical bar chart */
+.chart-card-vertical {
+  overflow: visible;
+}
+
+.chart-bars-vertical {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 180px;
+  padding: 0 4px;
+}
+
+.chart-bar-item-vertical {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 6px;
+  position: relative;
+}
+
+.chart-bar-vertical-fill {
+  width: 100%;
+  min-width: 28px;
+  max-width: 60px;
+  border-radius: 6px 6px 2px 2px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 6px;
+  transition: height 1s ease;
+  animation: barGrowUp 1s ease-out;
+  position: relative;
+}
+
+.chart-bar-vertical-fill.blue { background: linear-gradient(180deg, #0054A6, #3A7BD5); }
+.chart-bar-vertical-fill.green { background: linear-gradient(180deg, #4C8C24, #69B33B); }
+.chart-bar-vertical-fill.orange { background: linear-gradient(180deg, #F37021, #F59E3E); }
+
+@keyframes barGrowUp {
+  from { height: 0 !important; }
+}
+
+.chart-bar-vertical-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-white);
+  line-height: 1;
+}
+
+.chart-bar-vertical-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-align: center;
+  line-height: 1.2;
+  max-width: 70px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Chart tooltip */
+.chart-tooltip {
+  position: fixed;
+  z-index: 10000;
+  background: var(--color-primary);
+  color: var(--color-white);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* Donut chart */
 .chart-donut {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import RegionOverviewCard from './RegionOverviewCard.jsx'
 import { usuariosService } from '../services/usuarios'
 import { geoService } from '../services/geo'
+import mockData from '../services/mockData.js'
 
 export default function ConfiguracionSistema({ regionId = null, regionName = 'Visión Nacional' }) {
   const [users, setUsers] = useState([])
@@ -12,22 +12,57 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
   const [showUserForm, setShowUserForm] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [userForm, setUserForm] = useState({ username: '', fullName: '', email: '', role: 'Editor', password: '', status: 'activo' })
+  const [userPage, setUserPage] = useState(1)
+  const [userTotalPages, setUserTotalPages] = useState(1)
+  const [userTotalItems, setUserTotalItems] = useState(0)
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
-      usuariosService.getAll(),
+      usuariosService.getAll({ page: userPage, limit: 10 }),
       usuariosService.getRoles().then(r => r.data || r),
       geoService.getMunicipios().then(r => r.data || r),
     ])
       .then(([usersRes, rolesRes, munRes]) => {
-        setUsers(usersRes.usuarios || [])
-        setRoles(Array.isArray(rolesRes) ? rolesRes : rolesRes.roles || [])
-        setMunicipios(Array.isArray(munRes) ? munRes : munRes.municipios || [])
+        const usersData = usersRes.usuarios || []
+        setUsers(usersData)
+        setUserTotalItems(usersRes.meta?.total ?? usersData.length)
+        setUserTotalPages(Math.max(1, Math.ceil((usersRes.meta?.total ?? usersData.length) / 10)))
+        const rolesData = Array.isArray(rolesRes) ? rolesRes : rolesRes.roles || []
+        const munData = Array.isArray(munRes) ? munRes : munRes.municipios || []
+        if (usersData.length === 0 && rolesData.length === 0 && munData.length === 0) {
+          const mock = mockData.buildUsuarios()
+          setUsers(mock)
+          setUserTotalItems(mock.length)
+          setUserTotalPages(Math.max(1, Math.ceil(mock.length / 10)))
+          setRoles([
+            { ROLE_COD: 1, ROLE_NOM: 'Administrador', ROLE_DES: 'Acceso total al sistema' },
+            { ROLE_COD: 2, ROLE_NOM: 'Validador', ROLE_DES: 'Validación de prestadores turísticos' },
+            { ROLE_COD: 3, ROLE_NOM: 'Editor', ROLE_DES: 'Edición de contenido y destinos' },
+            { ROLE_COD: 4, ROLE_NOM: 'Soporte', ROLE_DES: 'Atención al usuario y consultas' },
+          ])
+          setMunicipios([])
+        } else {
+          setRoles(rolesData)
+          setMunicipios(munData)
+        }
         setLoading(false)
       })
-      .catch(() => setLoading(false))
-  }, [])
+      .catch(() => {
+        const mock = mockData.buildUsuarios()
+        setUsers(mock)
+        setUserTotalItems(mock.length)
+        setUserTotalPages(Math.max(1, Math.ceil(mock.length / 10)))
+        setRoles([
+          { ROLE_COD: 1, ROLE_NOM: 'Administrador', ROLE_DES: 'Acceso total al sistema' },
+          { ROLE_COD: 2, ROLE_NOM: 'Validador', ROLE_DES: 'Validación de prestadores turísticos' },
+          { ROLE_COD: 3, ROLE_NOM: 'Editor', ROLE_DES: 'Edición de contenido y destinos' },
+          { ROLE_COD: 4, ROLE_NOM: 'Soporte', ROLE_DES: 'Atención al usuario y consultas' },
+        ])
+        setMunicipios([])
+        setLoading(false)
+      })
+  }, [userPage])
 
   const openUserForm = (u = null) => {
     if (u) {
@@ -136,10 +171,22 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
+            </tbody>
+          </table>
         </div>
+        {userTotalPages > 1 && (
+          <div className="table-pagination-footer">
+            <span className="pagination-info">Página {userPage} de {userTotalPages} ({userTotalItems} usuarios)</span>
+            <div className="pagination-controls">
+              <button className="btn-page-arrow" disabled={userPage <= 1} onClick={() => setUserPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+              {Array.from({ length: Math.min(userTotalPages, 10) }, (_, i) => i + 1).map(p => (
+                <button key={p} className={`btn-page-num ${p === userPage ? 'active' : ''}`} onClick={() => setUserPage(p)}>{p}</button>
+              ))}
+              <button className="btn-page-arrow" disabled={userPage >= userTotalPages} onClick={() => setUserPage(p => Math.min(userTotalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+            </div>
+          </div>
+        )}
+      </div>
       )}
 
       {activeConfigTab === 'roles' && (
@@ -167,7 +214,7 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
         <div className="config-section">
           <p>Catálogo de municipios - Contexto: {regionName}</p>
           {Object.keys(groupedMunicipios).length === 0 ? (
-            <RegionOverviewCard moduleKey="configuracion" regionId={regionId} regionName={regionName} />
+            <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No hay catálogos geográficos disponibles.</div>
           ) : (
             <div className="municipios-list">
               {Object.entries(groupedMunicipios).map(([estado, muns]) => (

@@ -7,7 +7,9 @@ function mapPrestador(p) {
     category: p.PROV_TSE === 'hosped' ? 'Alojamiento Turístico'
       : p.PROV_TSE === 'rest' ? 'Gastronomía Regional'
       : p.PROV_TSE === 'transp' ? 'Transporte Turístico'
-      : p.PROV_TSE || '',
+      : p.PROV_TSE === 'agencia' ? 'Agencia de Viajes'
+      : p.PROV_TSE === 'guia' ? 'Guía de Turismo'
+      : 'Otros',
     tipo: p.PROV_TSE,
     rif: p.PROV_RIF,
     phone: p.PROV_TEL,

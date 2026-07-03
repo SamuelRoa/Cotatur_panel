@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import RegionOverviewCard from './RegionOverviewCard.jsx'
 import { consultasService } from '../services/consultas'
 import { opinionesService } from '../services/opiniones'
+import mockData from '../services/mockData.js'
 
 export default function CentroSoporte({ regionId = null, regionName = 'Visión Nacional' }) {
   const [tickets, setTickets] = useState([])
@@ -11,23 +11,46 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
   const [selectedTicket, setSelectedTicket] = useState(null)
   const [responseText, setResponseText] = useState('')
   const [showRespondModal, setShowRespondModal] = useState(false)
+  const [ticketPage, setTicketPage] = useState(1)
+  const [ticketTotalPages, setTicketTotalPages] = useState(1)
+  const [ticketTotalItems, setTicketTotalItems] = useState(0)
+  const [ratingPage, setRatingPage] = useState(1)
+  const [ratingTotalPages, setRatingTotalPages] = useState(1)
+  const [ratingTotalItems, setRatingTotalItems] = useState(0)
 
   const loadData = async () => {
     setLoading(true)
     try {
       const [consultasRes, opinionesRes] = await Promise.all([
-        consultasService.getAll(),
-        opinionesService.getAll(),
+        consultasService.getAll({ page: ticketPage, limit: 10 }),
+        opinionesService.getAll({ page: ratingPage, limit: 10 }),
       ])
-      setTickets(consultasRes.consultas || [])
-      setRatings(opinionesRes.opiniones || [])
+      let ticketsData = consultasRes.consultas || []
+      let ratingsData = opinionesRes.opiniones || []
+      if (ticketsData.length === 0 && ratingsData.length === 0) {
+        ticketsData = mockData.buildConsultas()
+        ratingsData = mockData.buildOpiniones()
+      }
+      setTickets(ticketsData)
+      setRatings(ratingsData)
+      setTicketTotalItems(consultasRes.meta?.total ?? ticketsData.length)
+      setTicketTotalPages(Math.max(1, Math.ceil((consultasRes.meta?.total ?? ticketsData.length) / 10)))
+      setRatingTotalItems(opinionesRes.meta?.total ?? ratingsData.length)
+      setRatingTotalPages(Math.max(1, Math.ceil((opinionesRes.meta?.total ?? ratingsData.length) / 10)))
     } catch (err) {
-      console.error(err)
+      const mockT = mockData.buildConsultas()
+      const mockR = mockData.buildOpiniones()
+      setTickets(mockT)
+      setRatings(mockR)
+      setTicketTotalItems(mockT.length)
+      setTicketTotalPages(Math.max(1, Math.ceil(mockT.length / 10)))
+      setRatingTotalItems(mockR.length)
+      setRatingTotalPages(Math.max(1, Math.ceil(mockR.length / 10)))
     }
     setLoading(false)
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData() }, [ticketPage, ratingPage])
 
   const handleRespond = async (id) => {
     if (!responseText.trim()) return
@@ -78,10 +101,10 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
       </div>
 
       <div className="soporte-tabs">
-        <button className={`soporte-tab ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>
+        <button className={`soporte-tab ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => { setActiveTab('tickets'); setTicketPage(1) }}>
           Consultas {pendingCount > 0 && <span className="pending-badge">{pendingCount}</span>}
         </button>
-        <button className={`soporte-tab ${activeTab === 'ratings' ? 'active' : ''}`} onClick={() => setActiveTab('ratings')}>
+        <button className={`soporte-tab ${activeTab === 'ratings' ? 'active' : ''}`} onClick={() => { setActiveTab('ratings'); setRatingPage(1) }}>
           Calificaciones y Opiniones
         </button>
       </div>
@@ -89,7 +112,7 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
       {activeTab === 'tickets' ? (
         <div className="tickets-list">
           {uiTickets.length === 0 ? (
-            <RegionOverviewCard moduleKey="soporte" regionId={regionId} regionName={regionName} />
+            <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No hay consultas registradas.</div>
           ) : (
               uiTickets.map(t => (
               <div key={t.id} className={`ticket-card ${t.status === 'pendiente' ? 'ticket-pending' : ''}`}>
@@ -119,6 +142,18 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
               </div>
             ))
           )}
+          {ticketTotalPages > 1 && (
+            <div className="table-pagination-footer">
+              <span className="pagination-info">Página {ticketPage} de {ticketTotalPages} ({ticketTotalItems} consultas)</span>
+              <div className="pagination-controls">
+                <button className="btn-page-arrow" disabled={ticketPage <= 1} onClick={() => setTicketPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+                {Array.from({ length: Math.min(ticketTotalPages, 10) }, (_, i) => i + 1).map(p => (
+                  <button key={p} className={`btn-page-num ${p === ticketPage ? 'active' : ''}`} onClick={() => setTicketPage(p)}>{p}</button>
+                ))}
+                <button className="btn-page-arrow" disabled={ticketPage >= ticketTotalPages} onClick={() => setTicketPage(p => Math.min(ticketTotalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="ratings-section">
@@ -128,7 +163,7 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
           </div>
 
           {uiRatings.length === 0 ? (
-            <RegionOverviewCard moduleKey="soporte" regionId={regionId} regionName={regionName} />
+            <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No hay calificaciones registradas.</div>
           ) : (
             <div className="ratings-list">
               {uiRatings.map(r => (
@@ -148,6 +183,18 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {ratingTotalPages > 1 && (
+            <div className="table-pagination-footer">
+              <span className="pagination-info">Página {ratingPage} de {ratingTotalPages} ({ratingTotalItems} opiniones)</span>
+              <div className="pagination-controls">
+                <button className="btn-page-arrow" disabled={ratingPage <= 1} onClick={() => setRatingPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+                {Array.from({ length: Math.min(ratingTotalPages, 10) }, (_, i) => i + 1).map(p => (
+                  <button key={p} className={`btn-page-num ${p === ratingPage ? 'active' : ''}`} onClick={() => setRatingPage(p)}>{p}</button>
+                ))}
+                <button className="btn-page-arrow" disabled={ratingPage >= ratingTotalPages} onClick={() => setRatingPage(p => Math.min(ratingTotalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+              </div>
             </div>
           )}
         </div>

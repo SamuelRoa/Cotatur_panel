@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import RegionOverviewCard from './RegionOverviewCard.jsx'
 import { rutasService } from '../services/rutas'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
+import mockData from '../services/mockData.js'
 
 const tourismTypes = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
 const roadStatuses = ['Buena', 'Regular', 'Mala', 'En construcción']
@@ -16,6 +16,9 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
   const [detail, setDetail] = useState(null)
   const [filterRegion, setFilterRegion] = useState(regionId || '')
   const [form, setForm] = useState({ name: '', description: '', roadStatus: 'Buena', tourismType: 'Ecoturismo', duration: '', distance: '', destinations: [] })
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
 
   const [regions, setRegions] = useState([])
 
@@ -29,15 +32,41 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
     setLoading(true)
     const rId = filterRegion || regionId
     const destParams = rId ? { regionId: rId } : {}
+    const routeParams = { page, limit: 10 }
+    if (rId) routeParams.regionId = rId
     Promise.all([
-      rutasService.getAll(rId ? { regionId: rId } : {}),
+      rutasService.getAll(routeParams),
       destinosService.getAll(destParams),
     ]).then(([routesRes, destinosRes]) => {
-      setRoutes(routesRes.rutas || [])
-      setAvailableDestinations(destinosRes.destinos || [])
+      let routesData = routesRes.rutas || []
+      let destsData = destinosRes.destinos || []
+      setRoutes(routesData)
+      setTotalItems(routesRes.meta?.total ?? routesData.length)
+      setTotalPages(Math.max(1, Math.ceil((routesRes.meta?.total ?? routesData.length) / 10)))
+      setAvailableDestinations(destsData)
+      if (routesData.length === 0 && destsData.length === 0) {
+        const mockRutas = mockData.buildRutas()
+        const mockDests = mockData.buildDestinos()
+        routesData = rId ? mockRutas.filter(r => r.destinos.some(d => d.regionId === parseInt(rId) || d.regionId === rId)) : mockRutas
+        destsData = rId ? mockDests.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mockDests
+        setRoutes(routesData)
+        setAvailableDestinations(destsData)
+        setTotalItems(routesData.length)
+        setTotalPages(Math.max(1, Math.ceil(routesData.length / 10)))
+      }
       setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [regionId, filterRegion])
+    }).catch(() => {
+      const mockRutas = mockData.buildRutas()
+      const mockDests = mockData.buildDestinos()
+      const rId = filterRegion || regionId
+      const filtered = rId ? mockRutas.filter(r => r.destinos.some(d => d.regionId === parseInt(rId) || d.regionId === rId)) : mockRutas
+      setRoutes(filtered)
+      setTotalItems(filtered.length)
+      setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
+      setAvailableDestinations(rId ? mockDests.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mockDests)
+      setLoading(false)
+    })
+  }, [regionId, filterRegion, page])
 
   const openForm = (route = null) => {
     if (route) {
@@ -119,7 +148,7 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
           <p className="module-subtitle">Construya rutas turísticas - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
-          <select className="module-filter-select" value={filterRegion} onChange={e => setFilterRegion(e.target.value)}>
+          <select className="module-filter-select" value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setPage(1) }}>
             <option value="">Todas las regiones</option>
             {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}
           </select>
@@ -129,7 +158,7 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
 
       <div className="routes-list">
         {routes.length === 0 ? (
-          <RegionOverviewCard moduleKey="rutas" regionId={regionId} regionName={regionName} />
+          <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No se encontraron rutas turísticas con los filtros actuales.</div>
         ) : (
           routes.map(r => (
             <div key={r.id} className="card-modern" onClick={() => setDetail(r)}>
@@ -172,6 +201,19 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
           ))
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="table-pagination-footer">
+          <span className="pagination-info">Página {page} de {totalPages} ({totalItems} rutas)</span>
+          <div className="pagination-controls">
+            <button className="btn-page-arrow" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+            {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(p => (
+              <button key={p} className={`btn-page-num ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
+            ))}
+            <button className="btn-page-arrow" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
