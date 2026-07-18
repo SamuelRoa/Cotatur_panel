@@ -617,7 +617,7 @@
   min-height: 100vh;
   display: flex;
   background: linear-gradient(135deg, #f7f9fb 0%, #f0f5ef 50%, #f2f7f1 100%);
-  overflow: hidden;
+  overflow: clip;
   animation: fadeIn 0.5s ease-out;
 }
 
@@ -903,14 +903,39 @@
 
 .notification-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 8px;
-  height: 8px;
+  top: -4px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   background-color: #E52320;
-  border-radius: 50%;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 9px;
   border: 1.5px solid var(--color-white);
   animation: pulseRing 2s ease-in-out infinite;
+  box-shadow: 0 2px 4px rgba(229, 35, 32, 0.3);
+}
+
+.sidebar-badge {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background-color: #E52320;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(229, 35, 32, 0.3);
 }
 
 .header-profile-widget {
@@ -1708,6 +1733,9 @@
     flex-direction: row;
     margin-top: 0;
     justify-content: space-around;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 0;
   }
   
   .sidebar-footer-actions {
@@ -1724,6 +1752,12 @@
   
   .profile-info-text {
     display: none;
+  }
+
+  .dashboard-main {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
   }
 }
 

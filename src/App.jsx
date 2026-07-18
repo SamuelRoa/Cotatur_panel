@@ -18,6 +18,7 @@ import { prestadoresService } from './services/prestadores'
 import { eventosService } from './services/eventos'
 import { rutasService } from './services/rutas'
 import { usuariosService } from './services/usuarios'
+import { connectSocket, disconnectSocket } from './services/socket'
 
 function App() {
   // Form states (Login)
@@ -65,7 +66,10 @@ function App() {
     const token = localStorage.getItem('auth_token')
     if (!token) return
     import('./services/auth').then(({ authService }) =>
-      authService.getMe().then(() => setCurrentView('dashboard')).catch(() => {
+      authService.getMe().then(() => {
+        setCurrentView('dashboard')
+        connectSocket(token)
+      }).catch(() => {
         localStorage.removeItem('auth_token')
         localStorage.removeItem('auth_user')
       })
@@ -97,6 +101,8 @@ function App() {
     }
   }, [])
   const [loadingData, setLoadingData] = useState(true)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [notificationMsg, setNotificationMsg] = useState('')
   
   useEffect(() => {
     if (regionsLoading) return
@@ -108,7 +114,8 @@ function App() {
       eventosService.getAll(params).catch(() => ({ eventos: [], meta: { total: 0 } })),
       rutasService.getAll(params).catch(() => ({ rutas: [], meta: { total: 0 } })),
       usuariosService.getAll().catch(() => ({ usuarios: [], meta: { total: 0 } })),
-    ]).then(([destinosRes, prestadoresRes, eventosRes, rutasRes, usuariosRes]) => {
+      prestadoresService.getAll({ limit: 1, estado: 'pend' }).catch(() => ({ prestadores: [], meta: { total: 0 } })),
+    ]).then(([destinosRes, prestadoresRes, eventosRes, rutasRes, usuariosRes, pendientesRes]) => {
       const destinos = destinosRes.destinos || destinosRes.data?.destinos || []
       const prestadores = prestadoresRes.prestadores || prestadoresRes.data?.prestadores || []
       const eventos = eventosRes.eventos || eventosRes.data?.eventos || []
@@ -125,6 +132,8 @@ function App() {
       setDestinosList(destinos)
       setEventosList(eventos)
       setRutasList(rutas)
+      const pendientesMeta = pendientesRes.meta?.total ?? 0
+      setPendingCount(pendientesMeta)
       setLoadingData(false)
     }).catch(() => setLoadingData(false))
   }, [regionId, regionsLoading])
@@ -151,7 +160,7 @@ function App() {
 
   const fetchPending = async (page, search) => {
     try {
-      const params = { page, limit: 10, status: 'pendiente' }
+      const params = { page, limit: 10, estado: 'pend' }
       if (regionId) params.regionId = regionId
       if (search) params.search = search
       const res = await prestadoresService.getAll(params)
@@ -178,6 +187,42 @@ function App() {
       fetchPending(pendingPage, searchQuery)
     }
   }, [pendingPage, searchQuery, regionId, activeNav])
+
+  // Socket.io: escuchar nuevos prestadores en tiempo real
+  useEffect(() => {
+    const socket = connectSocket(localStorage.getItem('auth_token'))
+    if (!socket) return
+
+    const handleNewPrestador = (data) => {
+      setPendingCount((prev) => prev + 1)
+      setNotificationMsg(`Nuevo prestador registrado: ${data.nombre}`)
+      setPendingMerchantsList((prev) => [data, ...prev])
+      setPendingTotalItems((prev) => prev + 1)
+    }
+
+    socket.on('new-prestador', handleNewPrestador)
+    return () => {
+      socket.off('new-prestador', handleNewPrestador)
+    }
+  }, [])
+
+  // Polling de respaldo cada 30s (por si Socket.io se desconecta)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const token = localStorage.getItem('auth_token')
+      if (!token || currentView !== 'dashboard') return
+      try {
+        const params = { limit: 1, estado: 'pend' }
+        if (regionId) params.regionId = regionId
+        const res = await prestadoresService.getAll(params)
+        const total = res.meta?.total ?? 0
+        setPendingCount(total)
+      } catch {
+        // ignorar errores de polling
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [regionId, currentView])
 
   // Modal states
   const [reviewMerchant, setReviewMerchant] = useState(null)
@@ -211,6 +256,7 @@ function App() {
       setCurrentView('dashboard')
       setUsername('')
       setPassword('')
+      connectSocket(res.data.accessToken)
     } catch (err) {
       setErrorMsg(err.message || 'Credenciales incorrectas')
     }
@@ -244,6 +290,7 @@ function App() {
       })
       localStorage.setItem('auth_token', res.data.accessToken)
       localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
+      connectSocket(res.data.accessToken)
 
       setRegFullName('')
       setRegEmail('')
@@ -1060,13 +1107,17 @@ function App() {
               </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'validation' ? 'active' : ''}`}
-                onClick={() => setActiveNav('validation')}
+                onClick={() => { setActiveNav('validation'); setPendingCount(0) }}
+                style={{ position: 'relative' }}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
                 <span>Validación</span>
+                {pendingCount > 0 && (
+                  <span className="sidebar-badge">{pendingCount}</span>
+                )}
               </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'route' ? 'active' : ''}`}
@@ -1140,14 +1191,21 @@ function App() {
               <div className="header-actions-right">
                 <button 
                   className="btn-notification" 
-                  onClick={() => triggerModal('Notificaciones', 'Tiene 5 solicitudes de validación de prestadores turísticos pendientes en el municipio San Cristóbal y Jáuregui.')}
+                  onClick={() => triggerModal(
+                    'Notificaciones', 
+                    pendingCount > 0
+                      ? `Tiene ${pendingCount} solicitudes de validación de prestadores turísticos pendientes.${notificationMsg ? `\n\nÚltima: ${notificationMsg}` : ''}`
+                      : 'No tiene notificaciones pendientes.'
+                  )}
                   title="Notificaciones"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                     <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                   </svg>
-                  <span className="notification-badge"></span>
+                  {pendingCount > 0 && (
+                    <span className="notification-badge">{pendingCount > 99 ? '99+' : pendingCount}</span>
+                  )}
                 </button>
 
                 {/* Profile widget shows user info */}
@@ -1176,10 +1234,13 @@ function App() {
                 <button 
                   className="btn-logout-header" 
                   onClick={() => {
+                    disconnectSocket()
                     localStorage.removeItem('auth_token')
                     localStorage.removeItem('auth_user')
                     setUser(null)
                     setCurrentView('login')
+                    setPendingCount(0)
+                    setNotificationMsg('')
                   }}
                   title="Cerrar Sesión"
                 >
