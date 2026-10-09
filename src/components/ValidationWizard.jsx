@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
 import { geoService } from '../services/geo'
+import { prestadorPaso1Schema, prestadorPaso2Schema, zodErrors } from '../schemas/entidades'
+import { CategoryIcon, IconArrowLeft, IconArrowRight, IconCheck } from './Icons.jsx'
 
 const CATEGORIES = [
-  { value: 'Alojamiento Turístico', label: 'Alojamiento Turístico', icon: '🏨' },
-  { value: 'Gastronomía Regional', label: 'Gastronomía Regional', icon: '🍽️' },
-  { value: 'Agencia de Viajes', label: 'Agencia de Viajes', icon: '✈️' },
-  { value: 'Agencia de Turismo', label: 'Agencia de Turismo', icon: '🧳' },
-  { value: 'Transporte Turístico', label: 'Transporte Turístico', icon: '🚌' },
-  { value: 'Guía de Turismo', label: 'Guía de Turismo', icon: '🧭' },
-  { value: 'Entretenimiento', label: 'Entretenimiento', icon: '🎉' },
-  { value: 'Otro', label: 'Otro', icon: '📌' },
+  { value: 'Alojamiento Turístico', label: 'Alojamiento Turístico' },
+  { value: 'Gastronomía Regional', label: 'Gastronomía Regional' },
+  { value: 'Agencia de Viajes', label: 'Agencia de Viajes' },
+  { value: 'Agencia de Turismo', label: 'Agencia de Turismo' },
+  { value: 'Transporte Turístico', label: 'Transporte Turístico' },
+  { value: 'Guía de Turismo', label: 'Guía de Turismo' },
+  { value: 'Entretenimiento', label: 'Entretenimiento' },
+  { value: 'Otro', label: 'Otro' },
 ]
 
 const SERVICES = [
@@ -102,20 +104,17 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
   }
 
   const validateStep = () => {
-    const errs = {}
+    let errs = {}
     if (step === 1) {
-      if (!data.name.trim()) errs.name = 'El nombre es obligatorio'
-      if (!data.category) errs.category = 'Seleccione una categoría'
-      if (!data.rif.trim()) errs.rif = 'El RIF es obligatorio'
-      else if (!/^[JjVvEe]-?\d{6,9}-?\d$/.test(data.rif.trim()))
-        errs.rif = 'Formato inválido (ej: J-12345678-9)'
+      errs = zodErrors(prestadorPaso1Schema.safeParse({
+        name: data.name, category: data.category, rif: data.rif, email: data.email || '',
+      }))
     }
     if (step === 2) {
-      if (!data.regionId) errs.regionId = 'Seleccione una región'
-      if (!data.estadoId) errs.estadoId = 'Seleccione un estado'
-      if (!data.municipioId) errs.municipioId = 'Seleccione un municipio'
-      if (!data.address.trim()) errs.address = 'La dirección es obligatoria'
-      if (data.branches < 1) errs.branches = 'Debe tener al menos 1 sede'
+      errs = zodErrors(prestadorPaso2Schema.safeParse({
+        regionId: String(data.regionId || ''), estadoId: String(data.estadoId || ''),
+        municipioId: String(data.municipioId || ''), address: data.address, branches: data.branches,
+      }))
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -161,12 +160,12 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
 
         <div className="wizard-stepper">
           <div className={`wizard-step-indicator ${step >= 1 ? 'active' : ''} ${step > 1 ? 'completed' : ''}`} onClick={() => step > 1 && setStep(1)}>
-            <div className="wizard-step-circle">{step > 1 ? '✓' : '1'}</div>
+            <div className="wizard-step-circle">{step > 1 ? <IconCheck size={15} /> : '1'}</div>
             <div className="wizard-step-label">Información General</div>
           </div>
           <div className="wizard-connector" />
           <div className={`wizard-step-indicator ${step >= 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`} onClick={() => step > 2 && setStep(2)}>
-            <div className="wizard-step-circle">{step > 2 ? '✓' : '2'}</div>
+            <div className="wizard-step-circle">{step > 2 ? <IconCheck size={15} /> : '2'}</div>
             <div className="wizard-step-label">Ubicación y Detalle</div>
           </div>
           <div className="wizard-connector" />
@@ -192,7 +191,7 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
                   <label>Categoría *</label>
                   <select className={`form-modal-select ${errors.category ? 'input-error' : ''}`} value={data.category} onChange={set('category')}>
                     <option value="">Seleccione...</option>
-                    {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}
+                    {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                   {errors.category && <span className="field-error">{errors.category}</span>}
                 </div>
@@ -404,11 +403,15 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
 
         <div className="modal-footer wizard-footer">
           {step > 1 && (
-            <button className="btn-modal-action cancel" onClick={handlePrev}>← Anterior</button>
+            <button className="btn-modal-action cancel" onClick={handlePrev}>
+              <IconArrowLeft size={15} /> Anterior
+            </button>
           )}
           <div style={{ flex: 1 }} />
           {step < 3 ? (
-            <button className="btn-modal-action approve" onClick={handleNext}>Siguiente →</button>
+            <button className="btn-modal-action approve" onClick={handleNext}>
+              Siguiente <IconArrowRight size={15} />
+            </button>
           ) : (
             <button className="btn-modal-action approve" onClick={handleSubmit}>Guardar y Enviar</button>
           )}

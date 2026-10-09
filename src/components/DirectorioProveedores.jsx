@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { prestadoresService } from '../services/prestadores'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
+import { CategoryIcon } from './Icons.jsx'
 
 export default function DirectorioProveedores({ regionId = null, regionName = 'Visión Nacional' }) {
   const [providers, setProviders] = useState([])
@@ -99,7 +100,7 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
                     {p.regionId && <span className="card-region-badge">{getRegionName(p.regionId)}</span>}
                   </div>
                   <div className="card-provider-icon">
-                    {p.category.includes('Alojamiento') ? '🏨' : p.category.includes('Gastronomía') ? '🍽️' : p.category.includes('Agencia') ? '✈️' : p.category.includes('Transporte') ? '🚌' : '🥾'}
+                    <CategoryIcon category={p.category} size={24} />
                   </div>
                   <h4 className="card-title">{p.name}</h4>
                   <div className="card-meta">

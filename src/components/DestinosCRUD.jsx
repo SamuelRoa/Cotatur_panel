@@ -4,9 +4,9 @@ import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
 
 const tourismTypes = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
-const roadStatuses = ['Buena', 'Regular', 'Mala', 'En construcción']
+const roadStatuses = ['Buena', 'Regular', 'Mala']
 
-const emptyForm = () => ({ name: '', description: '', lat: '', lng: '', tourismType: 'Ecoturismo', roadStatus: 'Buena', regionId: '', estadoId: '', municipioId: '', parish: '' })
+const emptyForm = () => ({ name: '', description: '', lat: '', lng: '', tourismType: 'Ecoturismo', roadStatus: 'Buena', regionId: '', estadoId: '', municipioId: '', parish: '', imagenUrl: '', destacado: false, orden: '0' })
 
 export default function DestinosCRUD({ regionId = null, regionName = 'Visión Nacional' }) {
   const [destinos, setDestinos] = useState([])
@@ -78,6 +78,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
         estadoId: String(destino.estado || ''),
         municipioId: String(destino.municipalityId || ''),
         parish: '',
+        imagenUrl: destino.imagenUrl || destino.image || '',
+        destacado: !!destino.destacado,
+        orden: String(destino.orden ?? 0),
       })
     } else {
       setEditing(null)
@@ -108,6 +111,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
         vialidad: form.roadStatus,
         tipoTurismoId: tourismTypes.indexOf(form.tourismType) + 1,
         municipioId: munId,
+        imagenUrl: form.imagenUrl?.trim() || undefined,
+        destacado: !!form.destacado,
+        orden: form.orden !== '' ? parseInt(form.orden) : undefined,
       }
       if (editing) {
         await destinosService.update(editing, payload)
@@ -268,14 +274,31 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
                   <div className="form-modal-group flex-1">
                     <label>ID Municipio <span className="required-star">*</span></label>
                     <input type="number" min="1" max="4" className="form-modal-input" value={form.municipioId} onChange={e => setForm(p => ({ ...p, municipioId: e.target.value }))} placeholder="1=San Cristóbal, 2=San José, 3=Libertador, 4=Maneiro" />
-                    <small style={{ color: '#888', fontSize: '11px', display: 'block', marginTop: 4 }}>IDs válidos: 1 (Táchira), 2 (Táchira), 3 (Mérida), 4 (Nueva Esparta)</small>
+                    <small style={{ color: 'var(--color-text-light)', fontSize: '11px', display: 'block', marginTop: 4 }}>IDs válidos: 1 (Táchira), 2 (Táchira), 3 (Mérida), 4 (Nueva Esparta)</small>
                   </div>
                   <div className="form-modal-group flex-1">
                     <label>Parroquia</label>
                     <input type="text" className="form-modal-input" value={form.parish} onChange={e => setForm(p => ({ ...p, parish: e.target.value }))} placeholder="Opcional" />
                   </div>
                 </div>
-                {geoError && <p style={{ color: '#e3342f', fontSize: 12, marginTop: 8 }}>{geoError}</p>}
+                <div className="form-section-title">Web (imagen + destacado)</div>
+                <div className="form-modal-group">
+                  <label>URL de imagen</label>
+                  <input type="url" className="form-modal-input" value={form.imagenUrl} onChange={e => setForm(p => ({ ...p, imagenUrl: e.target.value }))} placeholder="https://..." />
+                </div>
+                <div className="form-row">
+                  <div className="form-modal-group flex-1">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="checkbox" checked={!!form.destacado} onChange={e => setForm(p => ({ ...p, destacado: e.target.checked }))} />
+                      Destacado en home
+                    </label>
+                  </div>
+                  <div className="form-modal-group flex-1">
+                    <label>Orden</label>
+                    <input type="number" min="0" className="form-modal-input" value={form.orden} onChange={e => setForm(p => ({ ...p, orden: e.target.value }))} />
+                  </div>
+                </div>
+                {geoError && <p style={{ color: 'var(--color-error)', fontSize: 12, marginTop: 8 }}>{geoError}</p>}
               </div>
               <div className="modal-footer">
                 <button type="submit" className="btn-modal-action approve">{editing ? 'Actualizar' : 'Guardar'}</button>

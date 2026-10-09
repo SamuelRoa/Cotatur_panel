@@ -8,11 +8,18 @@ import RouteDesigner from './components/RouteDesigner.jsx'
 import DirectorioProveedores from './components/DirectorioProveedores.jsx'
 import GestionEventos from './components/GestionEventos.jsx'
 import CentroDifusion from './components/CentroDifusion.jsx'
+import GestionCMS from './components/GestionCMS.jsx'
 import CentroSoporte from './components/CentroSoporte.jsx'
 import ConfiguracionSistema from './components/ConfiguracionSistema.jsx'
 import ValidationWizard from './components/ValidationWizard.jsx'
 import RegionOverviewCard from './components/RegionOverviewCard.jsx'
+import { NotificationCenter } from './components/NotificationCenter.jsx'
 import { useRegion } from './RegionContext.jsx'
+import { useTheme } from './hooks/useTheme.js'
+import {
+  IconSun, IconMoon, IconMonitor, IconDot, IconTrend, IconPin,
+  CategoryIcon, IconCheck,
+} from './components/Icons.jsx'
 import { destinosService } from './services/destinos'
 import { prestadoresService } from './services/prestadores'
 import { eventosService } from './services/eventos'
@@ -60,6 +67,9 @@ function App() {
 
   // Auth & Region state from context
   const { regions, regionId, regionName, setRegionId, role, loading: regionsLoading } = useRegion()
+  const { mode: themeMode, cycle: cycleTheme } = useTheme()
+  const themeLabel = themeMode === 'claro' ? 'Modo claro' : themeMode === 'oscuro' ? 'Modo oscuro' : 'Según sistema'
+  const ThemeIcon = themeMode === 'claro' ? IconSun : themeMode === 'oscuro' ? IconMoon : IconMonitor
 
   // Auto-login si hay token guardado y sigue siendo válido
   useEffect(() => {
@@ -242,15 +252,18 @@ function App() {
     e.preventDefault()
     setErrorMsg('')
 
-    if (!username.trim() || !password.trim()) {
-      setErrorMsg('Por favor, complete todos los campos.')
+    const { loginSchema, zodErrors } = await import('./schemas/entidades')
+    const errs = zodErrors(loginSchema.safeParse({ email: username.trim(), password }))
+    if (Object.keys(errs).length > 0) {
+      setErrorMsg(Object.values(errs)[0])
       return
     }
 
     try {
       const { authService } = await import('./services/auth')
-      const res = await authService.login({ email: username.trim(), password })
+      const res = await authService.login({ email: username.trim().toLowerCase(), password })
       localStorage.setItem('auth_token', res.data.accessToken)
+      if (res.data.refreshToken) localStorage.setItem('auth_refresh', res.data.refreshToken)
       localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
       setUser(res.data.usuario)
       setCurrentView('dashboard')
@@ -266,7 +279,16 @@ function App() {
     e.preventDefault()
     setRegErrorMsg('')
 
-    if (!regFullName.trim() || !regEmail.trim() || !regUsername.trim() || !regPassword.trim() || !regConfirmPassword.trim()) {
+    const { registerSchema, zodErrors } = await import('./schemas/entidades')
+    const errs = zodErrors(registerSchema.safeParse({
+      nombre: regFullName.trim(), email: regEmail.trim(), password: regPassword,
+    }))
+    if (Object.keys(errs).length > 0) {
+      setRegErrorMsg(Object.values(errs)[0])
+      return
+    }
+
+    if (!regUsername.trim() || !regConfirmPassword.trim()) {
       setRegErrorMsg('Por favor, complete todos los campos.')
       return
     }
@@ -276,21 +298,19 @@ function App() {
       return
     }
 
-    if (regPassword.length < 6) {
-      setRegErrorMsg('La clave debe tener al menos 6 caracteres.')
-      return
-    }
-
     try {
       const { authService } = await import('./services/auth')
       const res = await authService.register({
         nombre: regFullName.trim(),
-        email: regEmail.trim(),
+        email: regEmail.trim().toLowerCase(),
         password: regPassword,
       })
-      localStorage.setItem('auth_token', res.data.accessToken)
-      localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
-      connectSocket(res.data.accessToken)
+      if (res.data?.accessToken) localStorage.setItem('auth_token', res.data.accessToken)
+      if (res.data?.refreshToken) localStorage.setItem('auth_refresh', res.data.refreshToken)
+      if (res.data?.usuario) {
+        localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
+        connectSocket(res.data.accessToken)
+      }
 
       setRegFullName('')
       setRegEmail('')
@@ -299,7 +319,7 @@ function App() {
       setRegConfirmPassword('')
 
       setCurrentView('login')
-      setUsername(res.data.usuario.email || regEmail.trim())
+      setUsername(res.data?.usuario?.email || res.data?.USUAR_EM || regEmail.trim())
 
       triggerModal(
         'Registro Exitoso',
@@ -625,6 +645,14 @@ function App() {
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
           className="login-screen">
+          <button className="theme-fab" onClick={cycleTheme} title={`Tema: ${themeLabel}. Clic para cambiar.`} aria-label={`Cambiar tema. Actual: ${themeLabel}`}>
+            <ThemeIcon size={20} />
+          </button>
+          <div className="aurora" aria-hidden="true">
+            <span className="aurora-blob a1" />
+            <span className="aurora-blob a2" />
+            <span className="aurora-blob a3" />
+          </div>
           {/* Main Login Card */}
           <div className="login-card">
             {/* Multicolored strip matching logo */}
@@ -634,7 +662,7 @@ function App() {
             <div className="login-card-main">
               {/* Brand Logo Image */}
               <div className="brand-logo-container">
-                <div style={{fontSize:42,fontWeight:800,color:'var(--color-primary)'}}>MINTUR</div>
+                <div style={{fontSize:42,fontWeight:700,color:'var(--color-primary)'}} className="font-display">MINTUR</div>
               </div>
               <h2 className="brand-subtitle">Plataforma Georreferenciada Nacional</h2>
 
@@ -809,6 +837,9 @@ function App() {
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
           className="login-screen">
+          <button className="theme-fab" onClick={cycleTheme} title={`Tema: ${themeLabel}. Clic para cambiar.`} aria-label={`Cambiar tema. Actual: ${themeLabel}`}>
+            <ThemeIcon size={20} />
+          </button>
           {/* Main Registration Card */}
           <div className="login-card">
             {/* Multicolored strip matching logo */}
@@ -818,7 +849,7 @@ function App() {
             <div className="login-card-main">
               {/* Brand Logo Image */}
               <div className="brand-logo-container">
-                <div style={{fontSize:42,fontWeight:800,color:'var(--color-primary)'}}>MINTUR</div>
+                <div style={{fontSize:42,fontWeight:700,color:'var(--color-primary)'}} className="font-display">MINTUR</div>
               </div>
               <h2 className="brand-subtitle">Registro de Nuevo Usuario</h2>
 
@@ -1034,8 +1065,7 @@ function App() {
           {/* Sidebar */}
           <aside className="dashboard-sidebar">
             <div className="sidebar-brand-container">
-              <div className="sidebar-logo-text">MINTUR</div>
-              <h1 className="sidebar-brand-name">MINTUR</h1>
+              <span className="sidebar-logo-text font-display">MINTUR</span>
               <p className="sidebar-brand-sub">{!regionId ? 'Turismo Nacional VZLA' : regionName}</p>
             </div>
             
@@ -1105,6 +1135,16 @@ function App() {
                 </svg>
                 <span>Difusión</span>
               </button>
+              <button
+                className={`sidebar-nav-item ${activeNav === 'cms' ? 'active' : ''}`}
+                onClick={() => setActiveNav('cms')}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                </svg>
+                <span>CMS Web</span>
+              </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'validation' ? 'active' : ''}`}
                 onClick={() => { setActiveNav('validation'); setPendingCount(0) }}
@@ -1136,7 +1176,6 @@ function App() {
               <button 
                 className={`sidebar-nav-item ${activeNav === 'soporte' ? 'active' : ''}`} 
                 onClick={() => setActiveNav('soporte')}
-                style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
@@ -1145,11 +1184,10 @@ function App() {
                 </svg>
                 <span>Soporte</span>
               </button>
-              {(user?.rolId ?? 55) === 55 && (
+              {(user?.rol === 'Administrador' || (user?.rolId ?? 55) === 55) && (
                 <button 
                   className={`sidebar-nav-item ${activeNav === 'configuracion' ? 'active' : ''}`} 
                   onClick={() => setActiveNav('configuracion')}
-                  style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3" />
@@ -1168,7 +1206,7 @@ function App() {
               <h2 className="header-portal-title">MINTUR Portal</h2>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={(user?.rolId ?? 55) !== 55}>
+                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={!(user?.rol === 'Administrador' || (user?.rolId ?? 55) === 55)}>
                   {regions.map(r => <option key={r.id ?? 'national'} value={r.id ?? ''}>{r.name}</option>)}
                 </select>
 
@@ -1189,24 +1227,15 @@ function App() {
               </div>
 
               <div className="header-actions-right">
-                <button 
-                  className="btn-notification" 
-                  onClick={() => triggerModal(
-                    'Notificaciones', 
-                    pendingCount > 0
-                      ? `Tiene ${pendingCount} solicitudes de validación de prestadores turísticos pendientes.${notificationMsg ? `\n\nÚltima: ${notificationMsg}` : ''}`
-                      : 'No tiene notificaciones pendientes.'
-                  )}
-                  title="Notificaciones"
+                <button
+                  className="btn-notification btn-theme-toggle"
+                  onClick={cycleTheme}
+                  title={`Tema: ${themeLabel}. Clic para cambiar.`}
+                  aria-label={`Cambiar tema. Actual: ${themeLabel}`}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                  </svg>
-                  {pendingCount > 0 && (
-                    <span className="notification-badge">{pendingCount > 99 ? '99+' : pendingCount}</span>
-                  )}
+                  <ThemeIcon size={18} />
                 </button>
+                <NotificationCenter pendingCount={pendingCount} />
 
                 {/* Profile widget shows user info */}
                 <button 
@@ -1304,7 +1333,7 @@ function App() {
                         </div>
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Destinos Georreferenciados</span><span className="metric-value">{totalGeoreferencedCount}</span><span className="metric-trend blue">◉ coordenadas GPS</span></div><div className="metric-icon-box blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" /></svg></div></div>
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Prestadores Registrados</span><span className="metric-value">{totalRegisteredCount.toLocaleString()}</span><span className="metric-trend green">▲ registrados</span></div><div className="metric-icon-box green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg></div></div>
-                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Eventos Programados</span><span className="metric-value">{dashboardStats.eventos}</span><span className="metric-trend purple">● {eventosEsteMes} este mes</span></div><div className="metric-icon-box purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg></div></div>
+                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Eventos Programados</span><span className="metric-value">{dashboardStats.eventos}</span><span className="metric-trend purple"><IconDot size={13} /> {eventosEsteMes} este mes</span></div><div className="metric-icon-box purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg></div></div>
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Rutas Turísticas</span><span className="metric-value">{totalRutasCount}</span><span className="metric-trend orange">⟐ {Object.keys(rutasByRegion).length} regiones</span></div><div className="metric-icon-box orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg></div></div>
                       </section>
                       <section className="charts-section">
@@ -1408,7 +1437,7 @@ function App() {
                           {tableLoading ? (<tr><td colSpan="5" className="table-td" style={{textAlign:'center',color:'var(--color-text-light)'}}>Cargando...</td></tr>) : tableMerchants.length === 0 ? (<tr><td colSpan="5" className="table-td" style={{textAlign:'center',color:'var(--color-text-light)'}}>No se encontraron registros.</td></tr>) : (
                             tableMerchants.map((merchant) => (
                               <tr key={merchant.id}>
-                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',fontWeight:'bold'}}>{merchant.category.includes('Alojamiento') ? '🏨' : merchant.category.includes('Gastronomía') ? '🍽️' : '✈️'}</div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
+                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb"><CategoryIcon category={merchant.category} size={19} /></div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
                                 <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
                                 <td className="table-td">{merchant.date || '—'}</td>
                                 <td className="table-td"><span className={'badge-status ' + (merchant.status || 'pendiente').toLowerCase()}>{(merchant.status || 'pendiente').toUpperCase()}</span></td>
@@ -1438,6 +1467,8 @@ function App() {
                     return <GestionEventos regionId={regionId} regionName={regionName} />
                   case 'difusion':
                     return <CentroDifusion regionId={regionId} regionName={regionName} />
+                  case 'cms':
+                    return <GestionCMS />
                   case 'soporte':
                     return <CentroSoporte regionId={regionId} regionName={regionName} />
                   case 'configuracion':
@@ -1470,7 +1501,7 @@ function App() {
                           <div className="table-responsive"><table className="dashboard-table"><thead><tr><th className="table-th">Nombre del Comercio</th><th className="table-th">RIF</th><th className="table-th">Fecha</th><th className="table-th">Estado</th><th className="table-th">Acciones</th></tr></thead><tbody>
                             {pendingMerchantsList.map((merchant) => (
                               <tr key={merchant.id}>
-                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',fontWeight:'bold'}}>{merchant.category.includes('Alojamiento') ? '🏨' : merchant.category.includes('Gastronomía') ? '🍽️' : '✈️'}</div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
+                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb"><CategoryIcon category={merchant.category} size={19} /></div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
                                 <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
                                 <td className="table-td">{merchant.date || '—'}</td>
                                 <td className="table-td"><span className={'badge-status ' + (merchant.status || 'pendiente').toLowerCase()}>{(merchant.status || 'pendiente').toUpperCase()}</span></td>
@@ -1547,7 +1578,7 @@ function App() {
                 </div>
                 <div className="detail-row">
                   <span className="detail-label">Estado Actual:</span>
-                  <span className="detail-value" style={{ textTransform: 'uppercase', fontWeight: 'bold', color: (reviewMerchant.status || 'pendiente') === 'pendiente' ? '#ba1a1a' : (reviewMerchant.status || '') === 'validado' ? 'var(--color-primary)' : '#E52320' }}>{reviewMerchant.status || 'pendiente'}</span>
+                  <span className="detail-value" style={{ textTransform: 'uppercase', fontWeight: 'bold', color: (reviewMerchant.status || 'pendiente') === 'pendiente' ? 'var(--tone-gold)' : (reviewMerchant.status || '') === 'validado' ? 'var(--tone-green)' : 'var(--tone-red)' }}>{reviewMerchant.status || 'pendiente'}</span>
                 </div>
               </div>
             </div>
@@ -1602,8 +1633,8 @@ function App() {
                     value={newMerchant.category}
                     onChange={(e) => setNewMerchant(prev => ({ ...prev, category: e.target.value }))}
                   >
-                    <option value="Alojamiento Turístico">🏨 Alojamiento Turístico</option>
-                    <option value="Gastronomía Regional">🍽️ Gastronomía Regional</option>
+                    <option value="Alojamiento Turístico">Alojamiento Turístico</option>
+                    <option value="Gastronomía Regional">Gastronomía Regional</option>
                     <option value="Agencia de Viajes">✈️ Agencia de Viajes</option>
                   </select>
                 </div>
@@ -1747,8 +1778,8 @@ function App() {
         }
 
         .modal-action-btn {
-          background: var(--gradient-primary);
-          color: var(--color-white);
+          background: var(--gradient-primary-solid);
+          color: var(--color-on-solid);
           border: none;
           border-radius: 10px;
           padding: 10px 24px;

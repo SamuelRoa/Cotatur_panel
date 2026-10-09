@@ -15,6 +15,10 @@ function mapDestino(d) {
     lat: d.TM_UBDES?.UBDE_LAT ? Number(d.TM_UBDES.UBDE_LAT) : null,
     lng: d.TM_UBDES?.UBDE_LON ? Number(d.TM_UBDES.UBDE_LON) : null,
     address: d.TM_UBDES?.UBDE_DIR,
+    imagenUrl: d.DEST_IMG,
+    image: d.DEST_IMG,
+    destacado: d.DEST_FAV,
+    orden: d.DEST_ORD,
     _raw: d,
   };
 }

@@ -303,10 +303,10 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
                   <div className="form-modal-group flex-1">
                     <label>ID Destino <span className="required-star">*</span></label>
                     <input type="number" min="1" max="3" className="form-modal-input" value={form.destinoId} onChange={e => setForm(p => ({ ...p, destinoId: e.target.value }))} placeholder="1, 2 o 3" />
-                    <small style={{ color: '#888', fontSize: '11px', display: 'block', marginTop: 4 }}>IDs válidos: 1, 2, 3 (destinos existentes)</small>
+                    <small style={{ color: 'var(--color-text-light)', fontSize: '11px', display: 'block', marginTop: 4 }}>IDs válidos: 1, 2, 3 (destinos existentes)</small>
                   </div>
                 </div>
-                {geoError && <p style={{ color: '#e3342f', fontSize: 12, marginTop: 8 }}>{geoError}</p>}
+                {geoError && <p style={{ color: 'var(--color-error)', fontSize: 12, marginTop: 8 }}>{geoError}</p>}
               </div>
               <div className="modal-footer">
                 <button type="submit" className="btn-modal-action approve">{editing ? 'Actualizar' : 'Guardar'}</button>

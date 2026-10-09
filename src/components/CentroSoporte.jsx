@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { consultasService } from '../services/consultas'
 import { opinionesService } from '../services/opiniones'
 import mockData from '../services/mockData.js'
+import { IconStar } from './Icons.jsx'
 
 export default function CentroSoporte({ regionId = null, regionName = 'Visión Nacional' }) {
   const [tickets, setTickets] = useState([])
@@ -172,7 +173,7 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
                     <div className="rating-destino">{r.destino}</div>
                     <div className="rating-stars">
                       {[1, 2, 3, 4, 5].map(s => (
-                        <span key={s} className={`star ${s <= r.score ? 'filled' : ''}`}>★</span>
+                        <span key={s} className={`star ${s <= r.score ? 'filled' : ''}`}><IconStar size={14} /></span>
                       ))}
                     </div>
                   </div>

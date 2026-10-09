@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { usuariosService } from '../services/usuarios'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
+import { RoleIcon } from './Icons.jsx'
 
 export default function ConfiguracionSistema({ regionId = null, regionName = 'Visión Nacional' }) {
   const [users, setUsers] = useState([])
@@ -199,7 +200,7 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
               roles.map(r => (
                 <div key={r.ROLE_COD || r.id} className="role-card">
                   <div className="role-card-icon">
-                    {r.ROLE_NOM === 'Administrador' ? '🛡️' : r.ROLE_NOM === 'Validador' ? '✅' : r.ROLE_NOM === 'Editor' ? '✏️' : '💬'}
+                    <RoleIcon role={r.ROLE_NOM || r.name} size={30} />
                   </div>
                   <h4 className="role-card-name">{r.ROLE_NOM || r.name}</h4>
                   <p className="role-card-desc">{r.ROLE_DES || r.description}</p>
