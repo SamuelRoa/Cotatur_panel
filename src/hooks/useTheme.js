@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 const KEY = "cotatur-theme";
 
@@ -10,38 +10,65 @@ function resolveDark(mode) {
   return mode === "oscuro" || (mode === "sistema" && systemDark());
 }
 
-export function useTheme() {
-  const [mode, setMode] = useState(() => {
-    try {
-      return localStorage.getItem(KEY) || "sistema";
-    } catch {
-      return "sistema";
-    }
-  });
+function readStoredMode() {
+  try {
+    return localStorage.getItem(KEY) || "sistema";
+  } catch {
+    return "sistema";
+  }
+}
 
-  useEffect(() => {
-    const dark = resolveDark(mode);
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+let listeners = [];
+let snapshot = { mode: "sistema", dark: false };
+
+function emit() {
+  listeners.forEach((listener) => listener());
+}
+
+function apply(next, persist) {
+  const dark = resolveDark(next);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  if (persist) {
     try {
-      localStorage.setItem(KEY, mode);
+      localStorage.setItem(KEY, next);
     } catch {
       /* ignore */
     }
-    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const onChange = () => {
-      if (mode === "sistema") {
-        const d = systemDark();
-        document.documentElement.dataset.theme = d ? "dark" : "light";
-      }
-    };
-    mq?.addEventListener?.("change", onChange);
-    return () => mq?.removeEventListener?.("change", onChange);
-  }, [mode]);
+  }
+  snapshot = { mode: next, dark };
+  emit();
+}
 
-  const cycle = useCallback(() => {
-    setMode((m) => (m === "claro" ? "oscuro" : m === "oscuro" ? "sistema" : "claro"));
+if (typeof document !== "undefined") {
+  const initial = readStoredMode();
+  snapshot = { mode: initial, dark: resolveDark(initial) };
+  document.documentElement.dataset.theme = snapshot.dark ? "dark" : "light";
+  document.documentElement.style.colorScheme = snapshot.dark ? "dark" : "light";
+  const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+  mq?.addEventListener?.("change", () => {
+    if (snapshot.mode === "sistema") apply("sistema", false);
+  });
+}
+
+export function useTheme() {
+  const subscribe = useCallback((listener) => {
+    listeners.push(listener);
+    return () => {
+      listeners = listeners.filter((l) => l !== listener);
+    };
   }, []);
 
-  return { mode, dark: resolveDark(mode), setMode, cycle };
+  const getSnapshot = useCallback(() => snapshot, []);
+  const getServerSnapshot = useCallback(() => snapshot, []);
+
+  const { mode, dark } = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
+  const setMode = useCallback((next) => apply(next, true), []);
+  const cycle = useCallback(() => {
+    const current = snapshot.mode;
+    apply(current === "claro" ? "oscuro" : current === "oscuro" ? "sistema" : "claro", true);
+  }, []);
+
+  return { mode, dark, setMode, cycle };
 }

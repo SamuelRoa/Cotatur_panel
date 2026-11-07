@@ -12,6 +12,7 @@ import GestionCMS from './components/GestionCMS.jsx'
 import CentroSoporte from './components/CentroSoporte.jsx'
 import ConfiguracionSistema from './components/ConfiguracionSistema.jsx'
 import ValidationWizard from './components/ValidationWizard.jsx'
+import MapaControl from './components/MapaControl.jsx'
 import RegionOverviewCard from './components/RegionOverviewCard.jsx'
 import { NotificationCenter } from './components/NotificationCenter.jsx'
 import { useRegion } from './RegionContext.jsx'
@@ -1103,6 +1104,17 @@ function App() {
                 </svg>
                 <span>Destinos</span>
               </button>
+              <button
+                className={`sidebar-nav-item ${activeNav === 'mapa' ? 'active' : ''}`}
+                onClick={() => setActiveNav('mapa')}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+                  <line x1="8" y1="2" x2="8" y2="18" />
+                  <line x1="16" y1="6" x2="16" y2="22" />
+                </svg>
+                <span>Mapa Turístico</span>
+              </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'proveedores' ? 'active' : ''}`}
                 onClick={() => setActiveNav('proveedores')}
@@ -1459,6 +1471,8 @@ function App() {
                     </div>
                   case 'destinos':
                     return <DestinosCRUD regionId={regionId} regionName={regionName} />
+                  case 'mapa':
+                    return <MapaControl regionId={regionId} regionName={regionName} />
                   case 'route':
                     return <RouteDesigner regionId={regionId} regionName={regionName} />
                   case 'proveedores':
