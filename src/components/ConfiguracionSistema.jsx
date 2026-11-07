@@ -12,7 +12,8 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
   const [activeConfigTab, setActiveConfigTab] = useState('usuarios')
   const [showUserForm, setShowUserForm] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
-  const [userForm, setUserForm] = useState({ username: '', fullName: '', email: '', role: 'Editor', password: '', status: 'activo' })
+  const [userForm, setUserForm] = useState({ fullName: '', email: '', roleId: '', password: '', status: 'activo' })
+  const [userFormError, setUserFormError] = useState('')
   const [userPage, setUserPage] = useState(1)
   const [userTotalPages, setUserTotalPages] = useState(1)
   const [userTotalItems, setUserTotalItems] = useState(0)
@@ -66,30 +67,44 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
   }, [userPage])
 
   const openUserForm = (u = null) => {
+    setUserFormError('')
     if (u) {
       setEditingUser(u.id)
-      setUserForm({ username: u.name || '', fullName: u.name || '', email: u.email || '', role: u.roleName || 'Editor', password: '', status: u.active ? 'activo' : 'inactivo' })
+      setUserForm({ fullName: u.name || '', email: u.email || '', roleId: u.roleId ?? '', password: '', status: u.active ? 'activo' : 'inactivo' })
     } else {
       setEditingUser(null)
-      setUserForm({ username: '', fullName: '', email: '', role: 'Editor', password: '', status: 'activo' })
+      setUserForm({ fullName: '', email: '', roleId: '', password: '', status: 'activo' })
     }
     setShowUserForm(true)
   }
 
   const handleSaveUser = async (e) => {
     e.preventDefault()
-    if (!userForm.fullName.trim()) return
+    setUserFormError('')
+    if (!userForm.fullName.trim()) { setUserFormError('El nombre completo es obligatorio.'); return }
+    if (!userForm.email.trim()) { setUserFormError('El correo electrónico es obligatorio.'); return }
+    if (!userForm.roleId) { setUserFormError('Seleccione un rol para el usuario.'); return }
+    if (!userForm.password && !editingUser) { setUserFormError('La contraseña es obligatoria.'); return }
+    if (userForm.password && userForm.password.length < 8) { setUserFormError('La contraseña debe tener al menos 8 caracteres.'); return }
     try {
-      const payload = { name: userForm.fullName, email: userForm.email }
+      const payload = {
+        nombre: userForm.fullName.trim(),
+        email: userForm.email.trim().toLowerCase(),
+        rolId: Number(userForm.roleId),
+        activo: userForm.status === 'activo',
+      }
+      if (userForm.password) payload.password = userForm.password
       if (editingUser) {
         await usuariosService.update(editingUser, payload)
+      } else {
+        await usuariosService.create(payload)
       }
-      const res = await usuariosService.getAll()
+      const res = await usuariosService.getAll({ page: userPage, limit: 10 })
       setUsers(res.usuarios || [])
       setShowUserForm(false)
       setEditingUser(null)
     } catch (err) {
-      alert('Error al guardar: ' + err.message)
+      setUserFormError(err.message || 'No se pudo guardar el usuario. Intente de nuevo.')
     }
   }
 
@@ -97,7 +112,7 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
     try {
       const u = users.find(x => x.id === id)
       if (!u) return
-      await usuariosService.update(id, { active: !u.active })
+      await usuariosService.update(id, { activo: !u.active })
       setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !u.active } : u))
     } catch (err) {
       alert('Error al cambiar estado: ' + err.message)
@@ -242,24 +257,29 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
             </div>
             <form onSubmit={handleSaveUser}>
               <div className="modal-body">
+                {userFormError && (
+                  <div style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(190, 40, 40, 0.1)', border: '1px solid rgba(190, 40, 40, 0.35)', color: '#b02828', fontSize: '13.5px', fontWeight: 600 }}>
+                    {userFormError}
+                  </div>
+                )}
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
                     <label>Nombre Completo *</label>
                     <input type="text" className="form-modal-input" value={userForm.fullName} onChange={e => setUserForm(p => ({ ...p, fullName: e.target.value }))} required />
                   </div>
                   <div className="form-modal-group flex-1">
-                    <label>Email</label>
-                    <input type="email" className="form-modal-input" value={userForm.email} onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))} />
+                    <label>Correo Electrónico *</label>
+                    <input type="email" className="form-modal-input" value={userForm.email} onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))} required />
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
-                    <label>Rol</label>
-                    <select className="form-modal-select" value={userForm.role} onChange={e => setUserForm(p => ({ ...p, role: e.target.value }))}>
-                      <option value="Administrador">Administrador</option>
-                      <option value="Validador">Validador</option>
-                      <option value="Editor">Editor</option>
-                      <option value="Soporte">Soporte</option>
+                    <label>Rol *</label>
+                    <select className="form-modal-select" value={userForm.roleId} onChange={e => setUserForm(p => ({ ...p, roleId: e.target.value }))} required>
+                      <option value="">Seleccione un rol...</option>
+                      {roles.map(r => (
+                        <option key={r.ROLE_COD ?? r.id} value={r.ROLE_COD ?? r.id ?? ''}>{r.ROLE_NOM || r.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="form-modal-group flex-1">
@@ -270,9 +290,15 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
                     </select>
                   </div>
                 </div>
+                <div className="form-row">
+                  <div className="form-modal-group flex-1">
+                    <label>{editingUser ? 'Nueva Clave (opcional)' : 'Clave *'}</label>
+                    <input type="password" className="form-modal-input" value={userForm.password} onChange={e => setUserForm(p => ({ ...p, password: e.target.value }))} placeholder={editingUser ? 'Dejar en blanco para no cambiar' : 'Mínimo 8 caracteres'} autoComplete="new-password" />
+                  </div>
+                </div>
               </div>
               <div className="modal-footer">
-                <button type="submit" className="btn-modal-action approve">{editingUser ? 'Actualizar' : 'Guardar'}</button>
+                <button type="submit" className="btn-modal-action approve">{editingUser ? 'Actualizar' : 'Crear Usuario'}</button>
                 <button type="button" className="btn-modal-action cancel" onClick={() => setShowUserForm(false)}>Cancelar</button>
               </div>
             </form>

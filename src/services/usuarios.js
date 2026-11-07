@@ -31,6 +31,7 @@ export const usuariosService = {
     const res = await api.get(`/usuarios/${id}`);
     return mapUsuario(res.data || res);
   },
+  create: (data) => api.post('/usuarios', data),
   update: (id, data) => api.put(`/usuarios/${id}`, data),
   delete: (id) => api.delete(`/usuarios/${id}`),
   getRoles: () => api.get('/usuarios/roles'),

@@ -34,20 +34,10 @@ function App() {
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [showRegPassword, setShowRegPassword] = useState(false)
-  const [showRegConfirm, setShowRegConfirm] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  
-  // Form states (Register)
-  const [regFullName, setRegFullName] = useState('')
-  const [regEmail, setRegEmail] = useState('')
-  const [regUsername, setRegUsername] = useState('')
-  const [regPassword, setRegPassword] = useState('')
-  const [regConfirmPassword, setRegConfirmPassword] = useState('')
-  const [regErrorMsg, setRegErrorMsg] = useState('')
 
   // View State
-  const [currentView, setCurrentView] = useState('login') // 'login' | 'register' | 'dashboard'
+  const [currentView, setCurrentView] = useState('login') // 'login' | 'dashboard'
   
   // Dashboard Navigation State
   const [activeNav, setActiveNav] = useState('dashboard')
@@ -273,61 +263,6 @@ function App() {
       connectSocket(res.data.accessToken)
     } catch (err) {
       setErrorMsg(err.message || 'Credenciales incorrectas')
-    }
-  }
-
-  const handleRegisterSubmit = async (e) => {
-    e.preventDefault()
-    setRegErrorMsg('')
-
-    const { registerSchema, zodErrors } = await import('./schemas/entidades')
-    const errs = zodErrors(registerSchema.safeParse({
-      nombre: regFullName.trim(), email: regEmail.trim(), password: regPassword,
-    }))
-    if (Object.keys(errs).length > 0) {
-      setRegErrorMsg(Object.values(errs)[0])
-      return
-    }
-
-    if (!regUsername.trim() || !regConfirmPassword.trim()) {
-      setRegErrorMsg('Por favor, complete todos los campos.')
-      return
-    }
-
-    if (regPassword !== regConfirmPassword) {
-      setRegErrorMsg('Las claves ingresadas no coinciden.')
-      return
-    }
-
-    try {
-      const { authService } = await import('./services/auth')
-      const res = await authService.register({
-        nombre: regFullName.trim(),
-        email: regEmail.trim().toLowerCase(),
-        password: regPassword,
-      })
-      if (res.data?.accessToken) localStorage.setItem('auth_token', res.data.accessToken)
-      if (res.data?.refreshToken) localStorage.setItem('auth_refresh', res.data.refreshToken)
-      if (res.data?.usuario) {
-        localStorage.setItem('auth_user', JSON.stringify(res.data.usuario))
-        connectSocket(res.data.accessToken)
-      }
-
-      setRegFullName('')
-      setRegEmail('')
-      setRegUsername('')
-      setRegPassword('')
-      setRegConfirmPassword('')
-
-      setCurrentView('login')
-      setUsername(res.data?.usuario?.email || res.data?.USUAR_EM || regEmail.trim())
-
-      triggerModal(
-        'Registro Exitoso',
-        `¡Su cuenta ha sido creada! Ya puede iniciar sesión.`
-      )
-    } catch (err) {
-      setRegErrorMsg(err.message || 'Error al registrar')
     }
   }
 
@@ -777,262 +712,9 @@ function App() {
                   </span>
                 </button>
 
-                {/* Invitation to register */}
-                <div className="register-invite-row" style={{ marginTop: '16px', fontSize: '13.5px', color: 'var(--color-text-muted)', textAlign: 'center' }}>
-                  ¿No tiene una cuenta?{' '}
-                  <a
-                    href="#register"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setCurrentView('register')
-                    }}
-                    style={{ color: 'var(--color-primary)', fontWeight: '600', textDecoration: 'none' }}
-                  >
-                    Regístrese aquí
-                  </a>
-                </div>
               </form>
 
 
-            </div>
-
-            {/* Dark Green Banner at Card Footer */}
-            <div className="login-card-footer">
-              <p className="footer-quote">
-                &ldquo;Explora la belleza natural del Táchira con nuestra guía inteligente&rdquo;
-              </p>
-              <div className="visitor-info">
-                <span className="visitor-label">¿Eres visitante?</span>
-                <a
-                  href="#registro-visitante"
-                  className="visitor-register-link"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setCurrentView('register')
-                  }}
-                >
-                  Regístrate aquí para explorar Táchira
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* External Footer */}
-          <footer className="copyright-footer">
-            <div className="copyright-emblem">
-              <svg viewBox="0 0 24 24">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </div>
-            <p className="copyright-text">
-              &copy; 2026 MINTUR - Ministerio del Poder Popular para el Turismo. Todos los derechos reservados.
-            </p>
-          </footer>
-
-        </motion.div>
-      ) : currentView === 'register' ? (
-        <motion.div
-          key="register"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3, ease: 'easeInOut' }}
-          className="login-screen">
-          <button className="theme-fab" onClick={cycleTheme} title={`Tema: ${themeLabel}. Clic para cambiar.`} aria-label={`Cambiar tema. Actual: ${themeLabel}`}>
-            <ThemeIcon size={20} />
-          </button>
-          {/* Main Registration Card */}
-          <div className="login-card">
-            {/* Multicolored strip matching logo */}
-            <div className="mosaic-strip"></div>
-            
-            {/* Header and Form Area */}
-            <div className="login-card-main">
-              {/* Brand Logo Image */}
-              <div className="brand-logo-container">
-                <div style={{fontSize:42,fontWeight:700,color:'var(--color-primary)'}} className="font-display">MINTUR</div>
-              </div>
-              <h2 className="brand-subtitle">Registro de Nuevo Usuario</h2>
-
-              {/* Form */}
-              <form className="login-form" onSubmit={handleRegisterSubmit}>
-                
-                {/* Full Name Input */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="regFullName">Nombre Completo</label>
-                  <div className="input-wrapper">
-                    <span className="input-icon-left">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
-                      </svg>
-                    </span>
-                    <input
-                      id="regFullName"
-                      type="text"
-                      className="form-input"
-                      placeholder="Ej. Juan Pérez"
-                      value={regFullName}
-                      onChange={(e) => setRegFullName(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Email Input */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="regEmail">Correo Electrónico</label>
-                  <div className="input-wrapper">
-                    <span className="input-icon-left">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                        <polyline points="22,6 12,13 2,6" />
-                      </svg>
-                    </span>
-                    <input
-                      id="regEmail"
-                      type="email"
-                      className="form-input"
-                      placeholder="ejemplo@correo.com"
-                      value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Username Input */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="regUsername">Nombre de Usuario</label>
-                  <div className="input-wrapper">
-                    <span className="input-icon-left">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
-                      </svg>
-                    </span>
-                    <input
-                      id="regUsername"
-                      type="text"
-                      className="form-input"
-                      placeholder="Nombre de usuario único"
-                      value={regUsername}
-                      onChange={(e) => setRegUsername(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Password Input */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="regPassword">Clave de Acceso</label>
-                  <div className="input-wrapper">
-                    <span className="input-icon-left">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </svg>
-                    </span>
-                    <input
-                      id="regPassword"
-                      type={showRegPassword ? 'text' : 'password'}
-                      className="form-input form-input-password"
-                      placeholder="Mínimo 6 caracteres"
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="password-toggle-btn"
-                      onClick={() => setShowRegPassword(!showRegPassword)}
-                      aria-label={showRegPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    >
-                      {showRegPassword ? (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                          <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Confirm Password Input */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="regConfirmPassword">Confirmar Clave</label>
-                  <div className="input-wrapper">
-                    <span className="input-icon-left">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </svg>
-                    </span>
-                    <input
-                      id="regConfirmPassword"
-                      type={showRegConfirm ? 'text' : 'password'}
-                      className="form-input form-input-password"
-                      placeholder="Repita la contraseña"
-                      value={regConfirmPassword}
-                      onChange={(e) => setRegConfirmPassword(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="password-toggle-btn"
-                      onClick={() => setShowRegConfirm(!showRegConfirm)}
-                      aria-label={showRegConfirm ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    >
-                      {showRegConfirm ? (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                          <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Registration Error Message */}
-                {regErrorMsg && (
-                  <div style={{ color: 'var(--color-error)', fontSize: '13px', textAlign: 'left', fontWeight: '500' }}>
-                    {regErrorMsg}
-                  </div>
-                )}
-
-                {/* Submit Register button */}
-                <button type="submit" className="btn-submit" style={{ marginTop: '8px' }}>
-                  Registrar Cuenta
-                  <span className="btn-icon-right">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="8.5" cy="7" r="4" />
-                      <line x1="20" y1="8" x2="20" y2="14" />
-                      <line x1="23" y1="11" x2="17" y2="11" />
-                    </svg>
-                  </span>
-                </button>
-
-                {/* Back to Login invitation */}
-                <div className="register-invite-row" style={{ marginTop: '16px', fontSize: '13.5px', color: 'var(--color-text-muted)', textAlign: 'center' }}>
-                  ¿Ya tiene una cuenta?{' '}
-                  <a
-                    href="#login"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setCurrentView('login')
-                    }}
-                    style={{ color: 'var(--color-primary)', fontWeight: '600', textDecoration: 'none' }}
-                  >
-                    Inicie Sesión
-                  </a>
-                </div>
-              </form>
             </div>
 
             {/* Dark Green Banner at Card Footer */}
@@ -1054,6 +736,7 @@ function App() {
               &copy; 2026 MINTUR - Ministerio del Poder Popular para el Turismo. Todos los derechos reservados.
             </p>
           </footer>
+
         </motion.div>
       ) : (
         <motion.div
@@ -1196,7 +879,7 @@ function App() {
                 </svg>
                 <span>Soporte</span>
               </button>
-              {(user?.rol === 'Administrador' || (user?.rolId ?? 55) === 55) && (
+              {(user?.rol === 'Administrador' || user?.rolId === 55) && (
                 <button 
                   className={`sidebar-nav-item ${activeNav === 'configuracion' ? 'active' : ''}`} 
                   onClick={() => setActiveNav('configuracion')}
@@ -1218,7 +901,7 @@ function App() {
               <h2 className="header-portal-title">MINTUR Portal</h2>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={!(user?.rol === 'Administrador' || (user?.rolId ?? 55) === 55)}>
+                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={!(user?.rol === 'Administrador' || user?.rolId === 55)}>
                   {regions.map(r => <option key={r.id ?? 'national'} value={r.id ?? ''}>{r.name}</option>)}
                 </select>
 
