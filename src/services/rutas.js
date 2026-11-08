@@ -41,4 +41,11 @@ export const rutasService = {
   create: (data) => api.post('/rutas', data),
   update: (id, data) => api.put(`/rutas/${id}`, data),
   delete: (id) => api.delete(`/rutas/${id}`),
+  getPapelera: async (params) => {
+    const res = await api.get('/rutas/papelera', { params });
+    const data = res.data || res;
+    return { rutas: (data.rutas || []).map(r => ({ ...mapRuta(r), deletedAt: r.deletedAt, deletedBy: r.deletedBy })), meta: data.meta };
+  },
+  restaurar: (id) => api.patch(`/rutas/${id}/restaurar`),
+  deletePermanente: (id) => api.delete(`/rutas/${id}/permanente`),
 };

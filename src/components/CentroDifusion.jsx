@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { contenidoService } from '../services/contenido'
 import mockData from '../services/mockData.js'
+import { useFeedback } from './feedbackContext.js'
 
 const typeLabels = { noticia: 'Noticia', comunicado: 'Comunicado', ficha: 'Ficha de Destino' }
 
 export default function CentroDifusion({ regionId = null, regionName = 'Visión Nacional' }) {
+  const { toast, confirm } = useFeedback()
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -57,7 +59,10 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
 
   const handleSave = async (e) => {
     e.preventDefault()
-    if (!form.titulo.trim() || !form.contenido.trim()) return
+    if (!form.titulo.trim() || !form.contenido.trim()) {
+      toast.warning('El título y el contenido de la publicación son obligatorios.')
+      return
+    }
     try {
       const payload = { titulo: form.titulo, descripcion: form.contenido, tipo: form.tipo }
       if (editing) {
@@ -65,22 +70,36 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
       } else {
         await contenidoService.createInstitucional(payload)
       }
+      toast.success(
+        editing
+          ? `La publicación «${form.titulo}» fue actualizada correctamente.`
+          : `La publicación «${form.titulo}» fue creada correctamente.`,
+        { title: editing ? 'Publicación actualizada' : 'Publicación creada' },
+      )
       const res = await contenidoService.getInstitucional()
       setPosts(res.contenidos || [])
       setShowForm(false)
       setEditing(null)
     } catch (err) {
-      alert('Error al guardar: ' + err.message)
+      toast.error('No se pudo guardar la publicación: ' + (err.message || 'error desconocido'))
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Eliminar esta publicación?')) return
+  const handleDelete = async (post) => {
+    const ok = await confirm({
+      title: 'Eliminar publicación',
+      message: `¿Seguro que deseas enviar a la papelera la publicación «${post.titulo}»? Un administrador podrá restaurarla.`,
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
-      await contenidoService.deleteInstitucional(id)
-      setPosts(prev => prev.filter(p => p.id !== id))
+      await contenidoService.deleteInstitucional(post.id)
+      setPosts(prev => prev.filter(p => p.id !== post.id))
+      toast.success(`La publicación «${post.titulo}» fue enviada a la papelera.`, { title: 'Publicación eliminada' })
     } catch (err) {
-      alert('Error al eliminar: ' + err.message)
+      toast.error('No se pudo eliminar la publicación: ' + (err.message || 'error desconocido'))
     }
   }
 
@@ -125,7 +144,7 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
                 <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); openForm(p) }} title="Editar">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                 </button>
-                <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(p.id) }} title="Eliminar">
+                <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(p) }} title="Eliminar">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                 </button>
               </div>

@@ -41,6 +41,13 @@ export const contenidoService = {
   createInstitucional: (data) => api.post('/contenido/institucional', data),
   updateInstitucional: (id, data) => api.put(`/contenido/institucional/${id}`, data),
   deleteInstitucional: (id) => api.delete(`/contenido/institucional/${id}`),
+  getPapeleraInstitucional: async (params) => {
+    const res = await api.get('/contenido/institucional/papelera', { params });
+    const data = res.data || res;
+    return { contenidos: (data.contenidos || []).map(c => ({ ...mapInstitucional(c), deletedAt: c.deletedAt, deletedBy: c.deletedBy })), meta: data.meta };
+  },
+  restaurarInstitucional: (id) => api.patch(`/contenido/institucional/${id}/restaurar`),
+  deleteInstitucionalPermanente: (id) => api.delete(`/contenido/institucional/${id}/permanente`),
 
   // Turístico
   getTuristico: async (params) => {
@@ -54,4 +61,11 @@ export const contenidoService = {
   createTuristico: (data) => api.post('/contenido/turistico', data),
   updateTuristico: (id, data) => api.put(`/contenido/turistico/${id}`, data),
   deleteTuristico: (id) => api.delete(`/contenido/turistico/${id}`),
+  getPapeleraTuristico: async (params) => {
+    const res = await api.get('/contenido/turistico/papelera', { params });
+    const data = res.data || res;
+    return { contenidos: (data.contenidos || []).map(c => ({ ...mapTuristico(c), deletedAt: c.deletedAt, deletedBy: c.deletedBy })), meta: data.meta };
+  },
+  restaurarTuristico: (id) => api.patch(`/contenido/turistico/${id}/restaurar`),
+  deleteTuristicoPermanente: (id) => api.delete(`/contenido/turistico/${id}/permanente`),
 };

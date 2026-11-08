@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
+import { useFeedback } from './feedbackContext.js'
 
 const tourismTypes = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
 const roadStatuses = ['Buena', 'Regular', 'Mala']
@@ -9,6 +10,7 @@ const roadStatuses = ['Buena', 'Regular', 'Mala']
 const emptyForm = () => ({ name: '', description: '', lat: '', lng: '', tourismType: 'Ecoturismo', roadStatus: 'Buena', regionId: '', estadoId: '', municipioId: '', parish: '', imagenUrl: '', destacado: false, orden: '0' })
 
 export default function DestinosCRUD({ regionId = null, regionName = 'Visión Nacional' }) {
+  const { toast, confirm } = useFeedback()
   const [destinos, setDestinos] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -92,14 +94,23 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
   const handleSave = async (e) => {
     e.preventDefault()
     setGeoError('')
-    if (!form.name.trim() || !form.lat || !form.lng) return
+    if (!form.name.trim() || !form.lat || !form.lng) {
+      const message = 'El nombre, la latitud y la longitud son obligatorios.'
+      setGeoError(message)
+      toast.warning(message)
+      return
+    }
     const munId = parseInt(form.municipioId)
     if (!munId || munId < 1) {
-      setGeoError('Debe ingresar un ID de municipio válido (1-4).')
+      const message = 'Debe ingresar un ID de municipio válido (1-4).'
+      setGeoError(message)
+      toast.warning(message)
       return
     }
     if (!form.regionId) {
-      setGeoError('Seleccione una región.')
+      const message = 'Seleccione una región para el destino.'
+      setGeoError(message)
+      toast.warning(message)
       return
     }
     try {
@@ -120,22 +131,38 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
       } else {
         await destinosService.create(payload)
       }
+      toast.success(
+        editing
+          ? `El destino «${form.name}» fue actualizado correctamente.`
+          : `El destino «${form.name}» fue creado correctamente.`,
+        { title: editing ? 'Destino actualizado' : 'Destino creado' },
+      )
       loadDestinos()
       setShowForm(false)
       setEditing(null)
       setGeoError('')
     } catch (err) {
-      setGeoError(err.message)
+      const message = err.message || 'No se pudo guardar el destino. Intenta de nuevo.'
+      setGeoError(message)
+      toast.error(message)
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Eliminar este destino turístico?')) return
+  const handleDelete = async (destino) => {
+    const ok = await confirm({
+      title: 'Eliminar destino turístico',
+      message: `¿Seguro que deseas enviar a la papelera el destino «${destino.name}»? Un administrador podrá restaurarlo.`,
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
-      await destinosService.delete(id)
-      setDestinos(prev => prev.filter(d => d.id !== id))
+      await destinosService.delete(destino.id)
+      setDestinos(prev => prev.filter(d => d.id !== destino.id))
+      toast.success(`El destino «${destino.name}» fue enviado a la papelera.`, { title: 'Destino eliminado' })
     } catch (err) {
-      alert('Error al eliminar: ' + err.message)
+      toast.error('No se pudo eliminar el destino: ' + (err.message || 'error desconocido'))
     }
   }
 
@@ -191,7 +218,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
                 <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); openForm(d) }} title="Editar">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                 </button>
-                <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(d.id) }} title="Eliminar">
+                <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(d) }} title="Eliminar">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                 </button>
               </div>

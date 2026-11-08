@@ -35,4 +35,11 @@ export const usuariosService = {
   update: (id, data) => api.put(`/usuarios/${id}`, data),
   delete: (id) => api.delete(`/usuarios/${id}`),
   getRoles: () => api.get('/usuarios/roles'),
+  getPapelera: async (params) => {
+    const res = await api.get('/usuarios/papelera', { params });
+    const data = res.data || res;
+    return { usuarios: (data.usuarios || []).map(u => ({ ...mapUsuario(u), deletedAt: u.deletedAt, deletedBy: u.deletedBy })), meta: data.meta };
+  },
+  restaurar: (id) => api.patch(`/usuarios/${id}/restaurar`),
+  deletePermanente: (id) => api.delete(`/usuarios/${id}/permanente`),
 };

@@ -59,4 +59,11 @@ export const prestadoresService = {
   update: (id, data) => api.put(`/prestadores/${id}`, data),
   updateEstado: (id, estado) => api.put(`/prestadores/${id}/estado`, { estado }),
   delete: (id) => api.delete(`/prestadores/${id}`),
+  getPapelera: async (params) => {
+    const res = await api.get('/prestadores/papelera', { params });
+    const data = res.data || res;
+    return { prestadores: (data.prestadores || []).map(p => ({ ...mapPrestador(p), deletedAt: p.deletedAt, deletedBy: p.deletedBy })), meta: data.meta };
+  },
+  restaurar: (id) => api.patch(`/prestadores/${id}/restaurar`),
+  deletePermanente: (id) => api.delete(`/prestadores/${id}/permanente`),
 };

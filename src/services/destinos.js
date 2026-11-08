@@ -39,4 +39,11 @@ export const destinosService = {
   create: (data) => api.post('/destinos', data),
   update: (id, data) => api.put(`/destinos/${id}`, data),
   delete: (id) => api.delete(`/destinos/${id}`),
+  getPapelera: async (params) => {
+    const res = await api.get('/destinos/papelera', { params });
+    const data = res.data || res;
+    return { destinos: (data.destinos || []).map(d => ({ ...mapDestino(d), deletedAt: d.deletedAt, deletedBy: d.deletedBy })), meta: data.meta };
+  },
+  restaurar: (id) => api.patch(`/destinos/${id}/restaurar`),
+  deletePermanente: (id) => api.delete(`/destinos/${id}/permanente`),
 };

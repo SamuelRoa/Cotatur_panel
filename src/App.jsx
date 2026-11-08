@@ -1,25 +1,25 @@
 import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { jsPDF } from 'jspdf'
-import cotaturLogo from './assets/cotatur_logo.png'
 import './App.css'
 import DestinosCRUD from './components/DestinosCRUD.jsx'
 import RouteDesigner from './components/RouteDesigner.jsx'
 import DirectorioProveedores from './components/DirectorioProveedores.jsx'
 import GestionEventos from './components/GestionEventos.jsx'
 import CentroDifusion from './components/CentroDifusion.jsx'
-import GestionCMS from './components/GestionCMS.jsx'
 import CentroSoporte from './components/CentroSoporte.jsx'
 import ConfiguracionSistema from './components/ConfiguracionSistema.jsx'
+import Papelera from './components/Papelera.jsx'
 import ValidationWizard from './components/ValidationWizard.jsx'
 import MapaControl from './components/MapaControl.jsx'
 import RegionOverviewCard from './components/RegionOverviewCard.jsx'
 import { NotificationCenter } from './components/NotificationCenter.jsx'
+import { useFeedback } from './components/feedbackContext.js'
 import { useRegion } from './RegionContext.jsx'
 import { useTheme } from './hooks/useTheme.js'
 import {
-  IconSun, IconMoon, IconMonitor, IconDot, IconTrend, IconPin,
-  CategoryIcon, IconCheck,
+  IconSun, IconMoon, IconMonitor, IconDot,
+  CategoryIcon,
 } from './components/Icons.jsx'
 import { destinosService } from './services/destinos'
 import { prestadoresService } from './services/prestadores'
@@ -58,6 +58,7 @@ function App() {
 
   // Auth & Region state from context
   const { regions, regionId, regionName, setRegionId, role, loading: regionsLoading } = useRegion()
+  const { toast } = useFeedback()
   const { mode: themeMode, cycle: cycleTheme } = useTheme()
   const themeLabel = themeMode === 'claro' ? 'Modo claro' : themeMode === 'oscuro' ? 'Modo oscuro' : 'Según sistema'
   const ThemeIcon = themeMode === 'claro' ? IconSun : themeMode === 'oscuro' ? IconMoon : IconMonitor
@@ -82,7 +83,13 @@ function App() {
   const [destinosList, setDestinosList] = useState([])
   const [eventosList, setEventosList] = useState([])
   const [rutasList, setRutasList] = useState([])
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('auth_user'))
+    } catch {
+      return null
+    }
+  })
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, content: '' })
   const [tablePage, setTablePage] = useState(1)
   const [tableSearch, setTableSearch] = useState('')
@@ -96,27 +103,15 @@ function App() {
   const [pendingMerchantsList, setPendingMerchantsList] = useState([])
 
   useEffect(() => {
-    const stored = localStorage.getItem('auth_user')
-    if (stored) {
-      try { setUser(JSON.parse(stored)) } catch { /* ignore */ }
-    }
-  }, [])
-  const [loadingData, setLoadingData] = useState(true)
-  const [pendingCount, setPendingCount] = useState(0)
-  const [notificationMsg, setNotificationMsg] = useState('')
-  
-  useEffect(() => {
     if (regionsLoading) return
     const params = regionId ? { regionId } : {}
-    setLoadingData(true)
     Promise.all([
       destinosService.getAll(params).catch(() => ({ destinos: [], meta: { total: 0 } })),
       prestadoresService.getAll(params).catch(() => ({ prestadores: [], meta: { total: 0 } })),
       eventosService.getAll(params).catch(() => ({ eventos: [], meta: { total: 0 } })),
       rutasService.getAll(params).catch(() => ({ rutas: [], meta: { total: 0 } })),
       usuariosService.getAll().catch(() => ({ usuarios: [], meta: { total: 0 } })),
-      prestadoresService.getAll({ limit: 1, estado: 'pend' }).catch(() => ({ prestadores: [], meta: { total: 0 } })),
-    ]).then(([destinosRes, prestadoresRes, eventosRes, rutasRes, usuariosRes, pendientesRes]) => {
+    ]).then(([destinosRes, prestadoresRes, eventosRes, rutasRes, usuariosRes]) => {
       const destinos = destinosRes.destinos || destinosRes.data?.destinos || []
       const prestadores = prestadoresRes.prestadores || prestadoresRes.data?.prestadores || []
       const eventos = eventosRes.eventos || eventosRes.data?.eventos || []
@@ -133,10 +128,7 @@ function App() {
       setDestinosList(destinos)
       setEventosList(eventos)
       setRutasList(rutas)
-      const pendientesMeta = pendientesRes.meta?.total ?? 0
-      setPendingCount(pendientesMeta)
-      setLoadingData(false)
-    }).catch(() => setLoadingData(false))
+    }).catch((err) => console.error('Error cargando datos del panel:', err))
   }, [regionId, regionsLoading])
 
   const fetchTableData = async (page, search) => {
@@ -195,8 +187,6 @@ function App() {
     if (!socket) return
 
     const handleNewPrestador = (data) => {
-      setPendingCount((prev) => prev + 1)
-      setNotificationMsg(`Nuevo prestador registrado: ${data.nombre}`)
       setPendingMerchantsList((prev) => [data, ...prev])
       setPendingTotalItems((prev) => prev + 1)
     }
@@ -206,24 +196,6 @@ function App() {
       socket.off('new-prestador', handleNewPrestador)
     }
   }, [])
-
-  // Polling de respaldo cada 30s (por si Socket.io se desconecta)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const token = localStorage.getItem('auth_token')
-      if (!token || currentView !== 'dashboard') return
-      try {
-        const params = { limit: 1, estado: 'pend' }
-        if (regionId) params.regionId = regionId
-        const res = await prestadoresService.getAll(params)
-        const total = res.meta?.total ?? 0
-        setPendingCount(total)
-      } catch {
-        // ignorar errores de polling
-      }
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [regionId, currentView])
 
   // Modal states
   const [reviewMerchant, setReviewMerchant] = useState(null)
@@ -281,12 +253,19 @@ function App() {
       setReviewMerchant(null)
       fetchTableData(tablePage, tableSearch)
       fetchPending(pendingPage, searchQuery)
-      triggerModal(
-        newStatus === 'validado' ? 'Solicitud Aprobada' : 'Solicitud Rechazada',
-        `El prestador turístico ha sido marcado como ${newStatus.toUpperCase()} exitosamente.`
-      )
+      if (newStatus === 'validado') {
+        toast.success('Solicitud aprobada', {
+          title: 'Prestador validado',
+          message: 'El prestador turístico fue aprobado correctamente y ya forma parte del directorio.',
+        })
+      } else {
+        toast.warning('Solicitud rechazada', {
+          title: 'Prestador rechazado',
+          message: 'El prestador turístico fue marcado como rechazado. Puedes revisarlo nuevamente más adelante.',
+        })
+      }
     } catch (err) {
-      triggerModal('Error', err.message || 'Error al actualizar estado')
+      toast.error(err.message || 'No se pudo actualizar el estado del prestador. Intenta de nuevo.')
     }
   }
 
@@ -316,9 +295,11 @@ function App() {
     }
     try {
       await prestadoresService.create(payload)
-      triggerModal('Registro Exitoso', `El prestador "${merchantData.name}" ha sido registrado y enviado para validación.`)
+      toast.success(`El prestador «${merchantData.name}» fue registrado y enviado para validación.`, {
+        title: 'Registro exitoso',
+      })
     } catch (err) {
-      triggerModal('Error', err.message || 'Error al registrar prestador')
+      toast.error(err.message || 'No se pudo registrar el prestador. Verifica los datos e intenta de nuevo.')
       return
     }
     try {
@@ -326,7 +307,7 @@ function App() {
       const res = await prestadoresService.getAll(params)
       setMerchants(res.prestadores || [])
       fetchTableData(tablePage, tableSearch)
-    } catch {}
+    } catch { /* refresco de tabla ignorado */ }
   }
 
   const handleExportPdf = () => {
@@ -416,8 +397,9 @@ function App() {
       pdf.text(`Reporte generado autom\u00e1ticamente por COTATUR — ${new Date().toISOString().slice(0, 10)}`, marg, y)
 
       pdf.save(`Reporte-COTATUR-${new Date().toISOString().slice(0, 10)}.pdf`)
+      toast.success('El reporte se generó y descargó correctamente.', { title: 'Reporte listo' })
     } catch (err) {
-      triggerModal('Error', 'Error al generar PDF: ' + err.message)
+      toast.error('No se pudo generar el reporte PDF: ' + err.message)
     }
     setExportingPdf(false)
   }
@@ -425,7 +407,7 @@ function App() {
   const handleAddMerchantSubmit = async (e) => {
     e.preventDefault()
     if (!newMerchant.name.trim() || !newMerchant.rif.trim()) {
-      alert('Por favor complete los campos obligatorios.')
+      toast.warning('Completa el nombre y el RIF del prestador para poder registrarlo.')
       return
     }
     try {
@@ -447,58 +429,16 @@ function App() {
       fetchTableData(tablePage, tableSearch)
       setIsAddModalOpen(false)
       setNewMerchant({ name: '', category: 'Alojamiento Turístico', rif: '' })
-      triggerModal(
-        'Punto Registrado',
-        `El prestador "${newMerchant.name}" ha sido ingresado como PENDIENTE de validación.`
-      )
+      toast.success(`El prestador «${newMerchant.name}» fue ingresado como pendiente de validación.`, {
+        title: 'Prestador registrado',
+      })
     } catch (err) {
-      triggerModal('Error', err.message || 'Error al registrar prestador')
+      toast.error(err.message || 'No se pudo registrar el prestador. Verifica los datos e intenta de nuevo.')
     }
   }
-
-  function isWithinTimeframe(dateStr, timeframe) {
-    const months = { 'ene':0,'feb':1,'mar':2,'abr':3,'may':4,'jun':5,'jul':6,'ago':7,'sep':8,'oct':9,'nov':10,'dic':11 }
-    const parts = dateStr.split(' ')
-    if (parts.length !== 3) return true
-    const day = parseInt(parts[0])
-    const month = months[parts[1].toLowerCase().slice(0,3)]
-    const year = parseInt(parts[2])
-    if (isNaN(day) || month === undefined || isNaN(year)) return true
-    const date = new Date(year, month, day)
-    const now = new Date()
-    const diffMs = now - date
-    const diffHours = diffMs / (1000 * 60 * 60)
-    const diffDays = diffHours / 24
-    switch (timeframe) {
-      case '24h': return diffHours <= 24
-      case 'week': return diffDays <= 7
-      case '30d': return diffDays <= 30
-      case '90d': return diffDays <= 90
-      default: return true
-    }
-  }
-
-  const filteredMerchants = merchants.filter(m => {
-    const name = (m.PROV_NOM || m.name || '').toLowerCase()
-    const rif = (m.PROV_RIF || m.rif || '').toLowerCase()
-    const category = (m.PROV_TSE || m.category || '').toLowerCase()
-    const q = searchQuery.toLowerCase()
-    return (!q || name.includes(q) || rif.includes(q) || category.includes(q))
-  })
-
-  const pendingMerchants = merchants.filter(m => {
-    const status = (m.status || '').toLowerCase()
-    if (status !== 'pendiente') return false
-    const name = (m.PROV_NOM || m.name || '').toLowerCase()
-    const rif = (m.PROV_RIF || m.rif || '').toLowerCase()
-    const category = (m.PROV_TSE || m.category || '').toLowerCase()
-    const q = searchQuery.toLowerCase()
-    return (!q || name.includes(q) || rif.includes(q) || category.includes(q))
-  })
 
   const totalRegisteredCount = dashboardStats.prestadores
   const totalGeoreferencedCount = dashboardStats.destinos
-  const totalAlertsCount = 0
 
   const categoryCounts = {}
   for (const m of merchants) {
@@ -527,9 +467,6 @@ function App() {
   const rechazados = merchants.filter(m => m.status === 'rechazado').length
   const pendientes = merchants.filter(m => m.status === 'pendiente').length
   const totalStatus = validados + rechazados + pendientes || 1
-  const validadosPct = Math.round(validados / totalStatus * 100)
-  const rechazadosPct = Math.round(rechazados / totalStatus * 100)
-  const pendientesPct = Math.round(pendientes / totalStatus * 100)
 
   const totalRutasCount = dashboardStats.rutas
 
@@ -767,16 +704,6 @@ function App() {
                 <span>Panel</span>
               </button>
               <button 
-                className={`sidebar-nav-item ${activeNav === 'regiones' ? 'active' : ''}`}
-                onClick={() => setActiveNav('regiones')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                <span>Regiones</span>
-              </button>
-              <button 
                 className={`sidebar-nav-item ${activeNav === 'destinos' ? 'active' : ''}`}
                 onClick={() => setActiveNav('destinos')}
               >
@@ -830,29 +757,15 @@ function App() {
                 </svg>
                 <span>Difusión</span>
               </button>
-              <button
-                className={`sidebar-nav-item ${activeNav === 'cms' ? 'active' : ''}`}
-                onClick={() => setActiveNav('cms')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                </svg>
-                <span>CMS Web</span>
-              </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'validation' ? 'active' : ''}`}
-                onClick={() => { setActiveNav('validation'); setPendingCount(0) }}
-                style={{ position: 'relative' }}
+                onClick={() => setActiveNav('validation')}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
                 <span>Validación</span>
-                {pendingCount > 0 && (
-                  <span className="sidebar-badge">{pendingCount}</span>
-                )}
               </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'route' ? 'active' : ''}`}
@@ -879,6 +792,20 @@ function App() {
                 </svg>
                 <span>Soporte</span>
               </button>
+              {(user?.rol === 'Administrador' || user?.rolId === 55) && (
+                <button
+                  className={`sidebar-nav-item ${activeNav === 'papelera' ? 'active' : ''}`}
+                  onClick={() => setActiveNav('papelera')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
+                  </svg>
+                  <span>Papelera</span>
+                </button>
+              )}
               {(user?.rol === 'Administrador' || user?.rolId === 55) && (
                 <button 
                   className={`sidebar-nav-item ${activeNav === 'configuracion' ? 'active' : ''}`} 
@@ -930,7 +857,7 @@ function App() {
                 >
                   <ThemeIcon size={18} />
                 </button>
-                <NotificationCenter pendingCount={pendingCount} />
+                <NotificationCenter />
 
                 {/* Profile widget shows user info */}
                 <button 
@@ -963,8 +890,6 @@ function App() {
                     localStorage.removeItem('auth_user')
                     setUser(null)
                     setCurrentView('login')
-                    setPendingCount(0)
-                    setNotificationMsg('')
                   }}
                   title="Cerrar Sesión"
                 >
@@ -1164,12 +1089,12 @@ function App() {
                     return <GestionEventos regionId={regionId} regionName={regionName} />
                   case 'difusion':
                     return <CentroDifusion regionId={regionId} regionName={regionName} />
-                  case 'cms':
-                    return <GestionCMS />
                   case 'soporte':
                     return <CentroSoporte regionId={regionId} regionName={regionName} />
                   case 'configuracion':
                     return <ConfiguracionSistema regionId={regionId} regionName={regionName} />
+                  case 'papelera':
+                    return <Papelera regionName={regionName} />
                    case 'validation':
                     return <div className="module-container">
                       <div className="module-header">
@@ -1220,10 +1145,6 @@ function App() {
                           )}
                         </section>
                       )}
-                    </div>
-                  case 'regiones':
-                    return <div className="module-container">
-                      <RegionOverviewCard moduleKey="destinos" regionId={regionId} regionName={regionName} />
                     </div>
                   default:
                     return <div className="module-container">

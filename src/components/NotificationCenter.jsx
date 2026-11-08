@@ -1,46 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getSocket } from '../services/socket';
 
-const INITIAL_NOTIFICATIONS = [
-  {
-    id: 'notif-init-1',
-    title: 'Prestadores Pendientes',
-    message: 'Existen solicitudes de validación de prestadores turísticos por revisar en el panel.',
-    time: 'Hoy',
-    isRead: false,
-    type: 'prestador',
-  },
-  {
-    id: 'notif-init-2',
-    title: 'Actualización de Requisitos RTN',
-    message: 'Se ha publicado la circular de actualización para prestadores turísticos de COTATUR.',
-    time: 'Ayer',
-    isRead: true,
-    type: 'sistema',
-  },
-  {
-    id: 'notif-init-3',
-    title: 'Bienvenida al Portal COTATUR',
-    message: 'Sistema de Notificaciones en tiempo real activo y conectado.',
-    time: 'Hace 2 días',
-    isRead: true,
-    type: 'sistema',
-  },
-];
-
-export function NotificationCenter({ pendingCount }) {
+export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const popoverRef = useRef(null);
 
   // Cargar notificaciones y su estado de lectura de localStorage
+  // (se descartan notificaciones falsas de versiones anteriores)
   const [notifications, setNotifications] = useState(() => {
+    const legacyIds = new Set(['notif-init-1', 'notif-init-2', 'notif-init-3', 'notif-pending-sync']);
     try {
       const saved = localStorage.getItem('cotatur_notifications_list');
-      if (saved) return JSON.parse(saved);
+      if (saved) return JSON.parse(saved).filter((n) => !legacyIds.has(n.id));
     } catch {
       // Fallback
     }
-    return INITIAL_NOTIFICATIONS;
+    return [];
   });
 
   // Guardar notificaciones en localStorage
@@ -51,29 +26,6 @@ export function NotificationCenter({ pendingCount }) {
       // Ignorar errores de almacenamiento
     }
   }, [notifications]);
-
-  // Sincronizar pendientes iniciales si hay prestadores pendientes
-  useEffect(() => {
-    if (pendingCount > 0) {
-      setNotifications((prev) => {
-        const exists = prev.some((n) => n.id === 'notif-pending-sync');
-        if (!exists) {
-          return [
-            {
-              id: 'notif-pending-sync',
-              title: 'Prestadores en Espera',
-              message: `Tienes ${pendingCount} prestadores esperando validación.`,
-              time: 'Ahora',
-              isRead: false,
-              type: 'prestador',
-            },
-            ...prev,
-          ];
-        }
-        return prev;
-      });
-    }
-  }, [pendingCount]);
 
   // Escuchar notificaciones en tiempo real vía WebSocket
   useEffect(() => {

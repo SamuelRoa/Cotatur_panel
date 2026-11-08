@@ -34,4 +34,11 @@ export const eventosService = {
   create: (data) => api.post('/eventos', data),
   update: (id, data) => api.put(`/eventos/${id}`, data),
   delete: (id) => api.delete(`/eventos/${id}`),
+  getPapelera: async (params) => {
+    const res = await api.get('/eventos/papelera', { params });
+    const data = res.data || res;
+    return { eventos: (data.eventos || []).map(e => ({ ...mapEvento(e), deletedAt: e.deletedAt, deletedBy: e.deletedBy })), meta: data.meta };
+  },
+  restaurar: (id) => api.patch(`/eventos/${id}/restaurar`),
+  deletePermanente: (id) => api.delete(`/eventos/${id}/permanente`),
 };

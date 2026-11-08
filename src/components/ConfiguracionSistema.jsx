@@ -3,8 +3,10 @@ import { usuariosService } from '../services/usuarios'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
 import { RoleIcon } from './Icons.jsx'
+import { useFeedback } from './feedbackContext.js'
 
 export default function ConfiguracionSistema({ regionId = null, regionName = 'Visión Nacional' }) {
+  const { toast } = useFeedback()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [municipios, setMunicipios] = useState([])
@@ -81,11 +83,12 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
   const handleSaveUser = async (e) => {
     e.preventDefault()
     setUserFormError('')
-    if (!userForm.fullName.trim()) { setUserFormError('El nombre completo es obligatorio.'); return }
-    if (!userForm.email.trim()) { setUserFormError('El correo electrónico es obligatorio.'); return }
-    if (!userForm.roleId) { setUserFormError('Seleccione un rol para el usuario.'); return }
-    if (!userForm.password && !editingUser) { setUserFormError('La contraseña es obligatoria.'); return }
-    if (userForm.password && userForm.password.length < 8) { setUserFormError('La contraseña debe tener al menos 8 caracteres.'); return }
+    const warn = (message) => { setUserFormError(message); toast.warning(message) }
+    if (!userForm.fullName.trim()) { warn('El nombre completo es obligatorio.'); return }
+    if (!userForm.email.trim()) { warn('El correo electrónico es obligatorio.'); return }
+    if (!userForm.roleId) { warn('Seleccione un rol para el usuario.'); return }
+    if (!userForm.password && !editingUser) { warn('La contraseña es obligatoria.'); return }
+    if (userForm.password && userForm.password.length < 8) { warn('La contraseña debe tener al menos 8 caracteres.'); return }
     try {
       const payload = {
         nombre: userForm.fullName.trim(),
@@ -99,12 +102,20 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
       } else {
         await usuariosService.create(payload)
       }
+      toast.success(
+        editingUser
+          ? `El usuario «${userForm.fullName}» fue actualizado correctamente.`
+          : `El usuario «${userForm.fullName}» fue creado correctamente.`,
+        { title: editingUser ? 'Usuario actualizado' : 'Usuario creado' },
+      )
       const res = await usuariosService.getAll({ page: userPage, limit: 10 })
       setUsers(res.usuarios || [])
       setShowUserForm(false)
       setEditingUser(null)
     } catch (err) {
-      setUserFormError(err.message || 'No se pudo guardar el usuario. Intente de nuevo.')
+      const message = err.message || 'No se pudo guardar el usuario. Intente de nuevo.'
+      setUserFormError(message)
+      toast.error(message)
     }
   }
 
@@ -114,8 +125,14 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
       if (!u) return
       await usuariosService.update(id, { activo: !u.active })
       setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !u.active } : u))
+      toast.success(
+        u.active
+          ? `El usuario «${u.name}» fue desactivado correctamente.`
+          : `El usuario «${u.name}» fue activado correctamente.`,
+        { title: u.active ? 'Usuario desactivado' : 'Usuario activado' },
+      )
     } catch (err) {
-      alert('Error al cambiar estado: ' + err.message)
+      toast.error('No se pudo cambiar el estado del usuario: ' + (err.message || 'error desconocido'))
     }
   }
 

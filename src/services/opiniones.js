@@ -25,4 +25,11 @@ export const opinionesService = {
   },
   create: (data) => api.post('/opiniones', data),
   delete: (id) => api.delete(`/opiniones/${id}`),
+  getPapelera: async (params) => {
+    const res = await api.get('/opiniones/papelera', { params });
+    const data = res.data || res;
+    return { opiniones: (data.opiniones || []).map(o => ({ ...mapOpinion(o), deletedAt: o.deletedAt, deletedBy: o.deletedBy })), meta: data.meta };
+  },
+  restaurar: (id) => api.patch(`/opiniones/${id}/restaurar`),
+  deletePermanente: (id) => api.delete(`/opiniones/${id}/permanente`),
 };

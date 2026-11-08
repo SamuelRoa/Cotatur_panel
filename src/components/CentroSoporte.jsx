@@ -3,8 +3,10 @@ import { consultasService } from '../services/consultas'
 import { opinionesService } from '../services/opiniones'
 import mockData from '../services/mockData.js'
 import { IconStar } from './Icons.jsx'
+import { useFeedback } from './feedbackContext.js'
 
 export default function CentroSoporte({ regionId = null, regionName = 'Visión Nacional' }) {
+  const { toast } = useFeedback()
   const [tickets, setTickets] = useState([])
   const [ratings, setRatings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -54,15 +56,19 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
   useEffect(() => { loadData() }, [ticketPage, ratingPage])
 
   const handleRespond = async (id) => {
-    if (!responseText.trim()) return
+    if (!responseText.trim()) {
+      toast.warning('Escribe una respuesta antes de enviarla.')
+      return
+    }
     try {
       await consultasService.responder(id, { respuesta: responseText })
+      toast.success('La respuesta fue enviada correctamente al ciudadano.', { title: 'Consulta respondida' })
       setShowRespondModal(false)
       setResponseText('')
       setSelectedTicket(null)
       loadData()
     } catch (err) {
-      alert('Error al responder: ' + err.message)
+      toast.error('No se pudo enviar la respuesta: ' + (err.message || 'error desconocido'))
     }
   }
 

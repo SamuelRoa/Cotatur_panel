@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { eventosService } from '../services/eventos'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
+import { useFeedback } from './feedbackContext.js'
 
 const eventTypes = ['Cultural', 'Feria', 'Gastronómico', 'Deportivo', 'Religioso', 'Musical']
 const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -14,6 +15,7 @@ function getMonthEvents(events, monthIndex) {
 }
 
 export default function GestionEventos({ regionId = null, regionName = 'Visión Nacional' }) {
+  const { toast, confirm } = useFeedback()
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -93,10 +95,17 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
   const handleSave = async (e) => {
     e.preventDefault()
     setGeoError('')
-    if (!form.title.trim() || !form.date) return
+    if (!form.title.trim() || !form.date) {
+      const message = 'El título y la fecha del evento son obligatorios.'
+      setGeoError(message)
+      toast.warning(message)
+      return
+    }
     const destId = parseInt(form.destinoId)
     if (!destId || destId < 1) {
-      setGeoError('Debe ingresar un ID de destino válido (1-3).')
+      const message = 'Debe ingresar un ID de destino válido (1-3).'
+      setGeoError(message)
+      toast.warning(message)
       return
     }
     try {
@@ -112,6 +121,12 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
       } else {
         await eventosService.create(payload)
       }
+      toast.success(
+        editing
+          ? `El evento «${form.title}» fue actualizado correctamente.`
+          : `El evento «${form.title}» fue creado correctamente.`,
+        { title: editing ? 'Evento actualizado' : 'Evento creado' },
+      )
       const params = {}
       const rId = filterRegion || regionId
       if (rId) params.regionId = rId
@@ -121,17 +136,27 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
       setEditing(null)
       setGeoError('')
     } catch (err) {
-      setGeoError(err.message)
+      const message = err.message || 'No se pudo guardar el evento. Intenta de nuevo.'
+      setGeoError(message)
+      toast.error(message)
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Eliminar este evento?')) return
+  const handleDelete = async (evento) => {
+    const ok = await confirm({
+      title: 'Eliminar evento',
+      message: `¿Seguro que deseas enviar a la papelera el evento «${evento.title}»? Un administrador podrá restaurarlo.`,
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
-      await eventosService.delete(id)
-      setEvents(prev => prev.filter(ev => ev.id !== id))
+      await eventosService.delete(evento.id)
+      setEvents(prev => prev.filter(ev => ev.id !== evento.id))
+      toast.success(`El evento «${evento.title}» fue enviado a la papelera.`, { title: 'Evento eliminado' })
     } catch (err) {
-      alert('Error al eliminar: ' + err.message)
+      toast.error('No se pudo eliminar el evento: ' + (err.message || 'error desconocido'))
     }
   }
 
@@ -213,7 +238,7 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
                 <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); openForm(ev) }} title="Editar">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                 </button>
-                <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(ev.id) }} title="Eliminar">
+                <button className="btn-icon-sm btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(ev) }} title="Eliminar">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                 </button>
               </div>
