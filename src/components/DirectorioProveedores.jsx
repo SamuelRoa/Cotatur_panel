@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { prestadoresService } from '../services/prestadores'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
 import { CategoryIcon } from './Icons.jsx'
+import { useFeedback } from './feedbackContext.js'
 
 export default function DirectorioProveedores({ regionId = null, regionName = 'Visión Nacional' }) {
+  const { toast } = useFeedback()
+  const loadErrorRef = useRef(false)
   const [providers, setProviders] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -42,9 +45,14 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
           setTotalItems(filtered.length)
           setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
         }
+        loadErrorRef.current = false
         setLoading(false)
       })
       .catch(() => {
+        if (!loadErrorRef.current) {
+          loadErrorRef.current = true
+          toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+        }
         const mock = mockData.buildPrestadores()
         const filtered = rId ? mock.filter(p => p.regionId === parseInt(rId) || p.regionId === rId) : mock
         setProviders(filtered)

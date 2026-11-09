@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { usuariosService } from '../services/usuarios'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
@@ -7,6 +7,7 @@ import { useFeedback } from './feedbackContext.js'
 
 export default function ConfiguracionSistema({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast } = useFeedback()
+  const loadErrorRef = useRef(false)
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [municipios, setMunicipios] = useState([])
@@ -50,9 +51,14 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
           setRoles(rolesData)
           setMunicipios(munData)
         }
+        loadErrorRef.current = false
         setLoading(false)
       })
       .catch(() => {
+        if (!loadErrorRef.current) {
+          loadErrorRef.current = true
+          toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+        }
         const mock = mockData.buildUsuarios()
         setUsers(mock)
         setUserTotalItems(mock.length)

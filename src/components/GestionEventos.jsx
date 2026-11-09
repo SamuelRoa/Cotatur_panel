@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { eventosService } from '../services/eventos'
+import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
 import { useFeedback } from './feedbackContext.js'
@@ -16,6 +17,7 @@ function getMonthEvents(events, monthIndex) {
 
 export default function GestionEventos({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
+  const loadErrorRef = useRef(false)
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -32,12 +34,21 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
   const [tableEvents, setTableEvents] = useState([])
 
   const [regions, setRegions] = useState([])
+  const [destinosList, setDestinosList] = useState([])
 
   useEffect(() => {
     geoService.getRegiones().then((res) => {
       setRegions(res.data || res || [])
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const params = { limit: 100 }
+    if (form.regionId) params.regionId = form.regionId
+    destinosService.getAll(params)
+      .then((res) => setDestinosList(res.destinos || []))
+      .catch(() => setDestinosList([]))
+  }, [form.regionId])
 
   useEffect(() => {
     const params = {}
@@ -51,8 +62,13 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
       } else {
         setEvents(data)
       }
+      loadErrorRef.current = false
       setLoading(false)
     }).catch(() => {
+      if (!loadErrorRef.current) {
+        loadErrorRef.current = true
+        toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+      }
       const mock = mockData.buildEventos()
       setEvents(rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock)
       setLoading(false)
@@ -64,6 +80,7 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
       setTableEvents(data)
       setTableTotalItems(res.meta?.total ?? data.length)
       setTableTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
+      loadErrorRef.current = false
     }).catch(() => {
       const mock = mockData.buildEventos()
       const filtered = rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock
@@ -102,8 +119,8 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
       return
     }
     const destId = parseInt(form.destinoId)
-    if (!destId || destId < 1) {
-      const message = 'Debe ingresar un ID de destino válido (1-3).'
+    if (!destId) {
+      const message = 'Seleccione el destino donde se realizará el evento.'
       setGeoError(message)
       toast.warning(message)
       return
@@ -319,16 +336,18 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
                 <div className="form-section-title">Ubicación</div>
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
-                    <label>Región</label>
-                    <select className="form-modal-select" value={form.regionId} onChange={e => setForm(p => ({ ...p, regionId: e.target.value }))}>
-                      <option value="">Seleccione...</option>
+                    <label>Región (filtro de destinos)</label>
+                    <select className="form-modal-select" value={form.regionId} onChange={e => setForm(p => ({ ...p, regionId: e.target.value, destinoId: '' }))}>
+                      <option value="">Todas las regiones</option>
                       {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}
                     </select>
                   </div>
                   <div className="form-modal-group flex-1">
-                    <label>ID Destino <span className="required-star">*</span></label>
-                    <input type="number" min="1" max="3" className="form-modal-input" value={form.destinoId} onChange={e => setForm(p => ({ ...p, destinoId: e.target.value }))} placeholder="1, 2 o 3" />
-                    <small style={{ color: 'var(--color-text-light)', fontSize: '11px', display: 'block', marginTop: 4 }}>IDs válidos: 1, 2, 3 (destinos existentes)</small>
+                    <label>Destino <span className="required-star">*</span></label>
+                    <select className="form-modal-select" value={form.destinoId} onChange={e => setForm(p => ({ ...p, destinoId: e.target.value }))}>
+                      <option value="">Seleccione...</option>
+                      {destinosList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
                   </div>
                 </div>
                 {geoError && <p style={{ color: 'var(--color-error)', fontSize: 12, marginTop: 8 }}>{geoError}</p>}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { consultasService } from '../services/consultas'
 import { opinionesService } from '../services/opiniones'
 import mockData from '../services/mockData.js'
@@ -7,6 +7,7 @@ import { useFeedback } from './feedbackContext.js'
 
 export default function CentroSoporte({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast } = useFeedback()
+  const loadErrorRef = useRef(false)
   const [tickets, setTickets] = useState([])
   const [ratings, setRatings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -40,7 +41,12 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
       setTicketTotalPages(Math.max(1, Math.ceil((consultasRes.meta?.total ?? ticketsData.length) / 10)))
       setRatingTotalItems(opinionesRes.meta?.total ?? ratingsData.length)
       setRatingTotalPages(Math.max(1, Math.ceil((opinionesRes.meta?.total ?? ratingsData.length) / 10)))
+      loadErrorRef.current = false
     } catch (err) {
+      if (!loadErrorRef.current) {
+        loadErrorRef.current = true
+        toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+      }
       const mockT = mockData.buildConsultas()
       const mockR = mockData.buildOpiniones()
       setTickets(mockT)

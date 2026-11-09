@@ -5,11 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:offline": "vite --mode offline --port 8101 --strictPort",
     "build": "vite build",
+    "build:offline": "vite build --mode offline",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:offline": "vite preview --port 8101 --strictPort"
   },
   "dependencies": {
+    "@fontsource/fraunces": "^5.3.0",
+    "@fontsource/sora": "^5.3.0",
     "@hookform/resolvers": "^5.9.1",
     "axios": "^1.18.0",
     "framer-motion": "^12.40.0",

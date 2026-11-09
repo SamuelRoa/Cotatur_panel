@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import '../lib/leafletPlugins'
@@ -11,6 +11,7 @@ import { destinosService } from '../services/destinos'
 import { prestadoresService } from '../services/prestadores'
 import { rutasService } from '../services/rutas'
 import { eventosService } from '../services/eventos'
+import { useFeedback } from './feedbackContext.js'
 
 const CARTO_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attribution/">CARTO</a>'
@@ -176,6 +177,8 @@ function countByEstado(items) {
 
 export default function MapaControl({ regionId = null, regionName = 'Visión Nacional' }) {
   const { dark } = useTheme()
+  const { toast } = useFeedback()
+  const loadErrorRef = useRef(false)
   const cartoKey = import.meta.env.VITE_CARTO_API_KEY || ''
 
   const [loadedKey, setLoadedKey] = useState(null)
@@ -208,13 +211,20 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
   useEffect(() => {
     let cancelled = false
     const params = regionId ? { regionId } : {}
+    let failed = 0
     Promise.all([
-      fetchAllPages(destinosService.getAll, 'destinos', params).catch(() => []),
-      fetchAllPages(prestadoresService.getAll, 'prestadores', params).catch(() => []),
-      fetchAllPages(rutasService.getAll, 'rutas', params).catch(() => []),
-      fetchAllPages(eventosService.getAll, 'eventos', params).catch(() => []),
+      fetchAllPages(destinosService.getAll, 'destinos', params).catch(() => { failed += 1; return [] }),
+      fetchAllPages(prestadoresService.getAll, 'prestadores', params).catch(() => { failed += 1; return [] }),
+      fetchAllPages(rutasService.getAll, 'rutas', params).catch(() => { failed += 1; return [] }),
+      fetchAllPages(eventosService.getAll, 'eventos', params).catch(() => { failed += 1; return [] }),
     ]).then(([d, p, r, e]) => {
       if (cancelled) return
+      if (failed > 0 && !loadErrorRef.current) {
+        loadErrorRef.current = true
+        toast.error('No se pudo cargar toda la información del mapa. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+      } else if (failed === 0) {
+        loadErrorRef.current = false
+      }
       setDestinos(d)
       setPrestadores(p)
       setRutas(r)
@@ -223,7 +233,7 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
       setLoadedKey(regionKey)
     })
     return () => { cancelled = true }
-  }, [regionId, regionKey])
+  }, [regionId, regionKey, toast])
 
   const loading = loadedKey !== regionKey
 
@@ -346,14 +356,17 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
     return feature ? L.geoJSON(feature).getBounds() : null
   }, [selectedState, geo])
 
-  const tileUrl = cartoKey
+  const offlineTileUrl = dark
+    ? (import.meta.env.VITE_TILE_URL_DARK || import.meta.env.VITE_TILE_URL)
+    : import.meta.env.VITE_TILE_URL
+  const tileUrl = offlineTileUrl || (cartoKey
     ? (dark
       ? `https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${cartoKey}`
       : `https://basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png?key=${cartoKey}`)
     : (dark
       ? 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png')
-  const attribution = cartoKey ? CARTO_ATTRIBUTION : (dark ? 'Esri, HERE, Garmin, OpenStreetMap contributors' : '&copy; OpenStreetMap contributors')
+      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'))
+  const attribution = offlineTileUrl || cartoKey ? CARTO_ATTRIBUTION : (dark ? 'Esri, HERE, Garmin, OpenStreetMap contributors' : '&copy; OpenStreetMap contributors')
 
   const toggleLayer = (key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))
 
@@ -469,7 +482,12 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
       <div className="mapa-layout">
         <div className="mapa-map-wrap">
           <MapContainer center={[7.5, -66]} zoom={6} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
-            <TileLayer url={tileUrl} attribution={attribution} />
+            <TileLayer
+              url={tileUrl}
+              attribution={attribution}
+              maxZoom={20}
+              maxNativeZoom={offlineTileUrl ? 9 : undefined}
+            />
             {layers.coropleta && geo && (
               <ChoroplethLayer geo={geo} counts={countsDestinos} selected={selectedState} onSelect={setSelectedState} />
             )}

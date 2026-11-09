@@ -51,6 +51,16 @@ function logout() {
   localStorage.removeItem("auth_user");
 }
 
+function friendlyError(error) {
+  if (error.code === "ECONNABORTED" || /timeout/i.test(error.message || "")) {
+    return "El servidor tardó demasiado en responder. Intenta de nuevo.";
+  }
+  if (!error.response || error.code === "ERR_NETWORK") {
+    return "No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.";
+  }
+  return error.message || "Error inesperado. Intenta de nuevo.";
+}
+
 api.interceptors.response.use(
   (response) => response.data,
   async (error) => {
@@ -65,8 +75,7 @@ api.interceptors.response.use(
       }
       logout();
     }
-    const message =
-      error.response?.data?.message || error.message || "Error de conexión";
+    const message = error.response?.data?.message || friendlyError(error);
     return Promise.reject(new Error(message));
   },
 );

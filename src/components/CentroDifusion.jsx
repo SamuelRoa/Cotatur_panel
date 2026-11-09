@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { contenidoService } from '../services/contenido'
 import mockData from '../services/mockData.js'
 import { useFeedback } from './feedbackContext.js'
@@ -7,6 +7,7 @@ const typeLabels = { noticia: 'Noticia', comunicado: 'Comunicado', ficha: 'Ficha
 
 export default function CentroDifusion({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
+  const loadErrorRef = useRef(false)
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -35,9 +36,14 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
           setTotalItems(mockData.buildContenidos().length)
           setTotalPages(Math.max(1, Math.ceil(mockData.buildContenidos().length / 10)))
         }
+        loadErrorRef.current = false
         setLoading(false)
       })
       .catch(() => {
+        if (!loadErrorRef.current) {
+          loadErrorRef.current = true
+          toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+        }
         const mock = mockData.buildContenidos()
         setPosts(mock)
         setTotalItems(mock.length)

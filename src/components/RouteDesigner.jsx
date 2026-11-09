@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { rutasService } from '../services/rutas'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
@@ -10,6 +10,7 @@ const roadStatuses = ['Buena', 'Regular', 'Mala', 'En construcción']
 
 export default function RouteDesigner({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
+  const loadErrorRef = useRef(false)
   const [routes, setRoutes] = useState([])
   const [loading, setLoading] = useState(true)
   const [availableDestinations, setAvailableDestinations] = useState([])
@@ -33,7 +34,8 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
   useEffect(() => {
     setLoading(true)
     const rId = filterRegion || regionId
-    const destParams = rId ? { regionId: rId } : {}
+    const destParams = { limit: 100 }
+    if (rId) destParams.regionId = rId
     const routeParams = { page, limit: 10 }
     if (rId) routeParams.regionId = rId
     Promise.all([
@@ -56,8 +58,13 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
         setTotalItems(routesData.length)
         setTotalPages(Math.max(1, Math.ceil(routesData.length / 10)))
       }
+      loadErrorRef.current = false
       setLoading(false)
     }).catch(() => {
+      if (!loadErrorRef.current) {
+        loadErrorRef.current = true
+        toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+      }
       const mockRutas = mockData.buildRutas()
       const mockDests = mockData.buildDestinos()
       const rId = filterRegion || regionId
@@ -68,7 +75,7 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
       setAvailableDestinations(rId ? mockDests.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mockDests)
       setLoading(false)
     })
-  }, [regionId, filterRegion, page])
+  }, [regionId, filterRegion, page, toast])
 
   const openForm = (route = null) => {
     if (route) {
@@ -152,8 +159,6 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
     arr.includes(item) ? arr.filter(i => i !== item) : [...arr, item]
 
   const getDestName = (id) => availableDestinations.find(d => d.id === id)?.name || 'Desconocido'
-
-  const getRegionName = (rId) => regions.find(r => r.REGI_COD === rId)?.REGI_NOM || ''
 
   if (loading) {
     return <div className="module-container"><p className="module-subtitle">Cargando rutas...</p></div>

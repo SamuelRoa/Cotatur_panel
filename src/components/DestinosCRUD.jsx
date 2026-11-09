@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
 import mockData from '../services/mockData.js'
@@ -11,6 +11,7 @@ const emptyForm = () => ({ name: '', description: '', lat: '', lng: '', tourismT
 
 export default function DestinosCRUD({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
+  const loadErrorRef = useRef(false)
   const [destinos, setDestinos] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -24,10 +25,18 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
   const [totalItems, setTotalItems] = useState(0)
 
   const [regions, setRegions] = useState([])
+  const [estados, setEstados] = useState([])
+  const [municipios, setMunicipios] = useState([])
 
   useEffect(() => {
-    geoService.getRegiones().then((res) => {
-      setRegions(res.data || res || [])
+    Promise.all([
+      geoService.getRegiones(),
+      geoService.getEstados(),
+      geoService.getMunicipios(),
+    ]).then(([regRes, estRes, munRes]) => {
+      setRegions(regRes.data || regRes || [])
+      setEstados(estRes.data || estRes || [])
+      setMunicipios(munRes.data || munRes || [])
     }).catch(() => {})
   }, [])
 
@@ -50,9 +59,14 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
           setTotalItems(filtered.length)
           setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
         }
+        loadErrorRef.current = false
         setLoading(false)
       })
       .catch(() => {
+        if (!loadErrorRef.current) {
+          loadErrorRef.current = true
+          toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
+        }
         const mock = mockData.buildDestinos()
         const filtered = rId ? mock.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mock
         setDestinos(filtered)
@@ -68,6 +82,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
 
   const openForm = (destino = null) => {
     if (destino) {
+      const mun = municipios.find(m => m.MUNI_COD === Number(destino.municipalityId))
       setEditing(destino.id)
       setForm({
         name: destino.name,
@@ -77,9 +92,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
         tourismType: destino.tourismType || 'Ecoturismo',
         roadStatus: destino.roadStatus || 'Buena',
         regionId: String(destino.regionId || ''),
-        estadoId: String(destino.estado || ''),
+        estadoId: mun ? String(mun.MUNI_EST) : '',
         municipioId: String(destino.municipalityId || ''),
-        parish: '',
+        parish: destino.address || '',
         imagenUrl: destino.imagenUrl || destino.image || '',
         destacado: !!destino.destacado,
         orden: String(destino.orden ?? 0),
@@ -94,23 +109,25 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
   const handleSave = async (e) => {
     e.preventDefault()
     setGeoError('')
-    if (!form.name.trim() || !form.lat || !form.lng) {
-      const message = 'El nombre, la latitud y la longitud son obligatorios.'
+    const fail = (message) => {
       setGeoError(message)
       toast.warning(message)
-      return
     }
-    const munId = parseInt(form.municipioId)
-    if (!munId || munId < 1) {
-      const message = 'Debe ingresar un ID de municipio válido (1-4).'
-      setGeoError(message)
-      toast.warning(message)
+    if (!form.name.trim() || !form.lat || !form.lng) {
+      fail('El nombre, la latitud y la longitud son obligatorios.')
       return
     }
     if (!form.regionId) {
-      const message = 'Seleccione una región para el destino.'
-      setGeoError(message)
-      toast.warning(message)
+      fail('Seleccione una región para el destino.')
+      return
+    }
+    if (!form.estadoId) {
+      fail('Seleccione el estado donde se encuentra el destino.')
+      return
+    }
+    const munId = parseInt(form.municipioId)
+    if (!munId) {
+      fail('Seleccione el municipio del destino.')
       return
     }
     try {
@@ -122,6 +139,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
         vialidad: form.roadStatus,
         tipoTurismoId: tourismTypes.indexOf(form.tourismType) + 1,
         municipioId: munId,
+        direccion: form.parish?.trim() || undefined,
         imagenUrl: form.imagenUrl?.trim() || undefined,
         destacado: !!form.destacado,
         orden: form.orden !== '' ? parseInt(form.orden) : undefined,
@@ -167,6 +185,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
   }
 
   const getRegionName = (rId) => regions.find(r => r.REGI_COD === rId)?.REGI_NOM || ''
+
+  const filteredEstados = estados.filter(e => !form.regionId || e.ESTA_REGI === parseInt(form.regionId))
+  const filteredMunicipios = municipios.filter(m => !form.estadoId || m.MUNI_EST === parseInt(form.estadoId))
 
   if (loading) {
     return <div className="module-container"><p className="module-subtitle">Cargando destinos...</p></div>
@@ -287,24 +308,29 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
                     <label>Región <span className="required-star">*</span></label>
-                    <select className="form-modal-select" value={form.regionId} onChange={e => setForm(p => ({ ...p, regionId: e.target.value }))}>
+                    <select className="form-modal-select" value={form.regionId} onChange={e => setForm(p => ({ ...p, regionId: e.target.value, estadoId: '', municipioId: '' }))}>
                       <option value="">Seleccione...</option>
                       {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}
                     </select>
                   </div>
                   <div className="form-modal-group flex-1">
-                    <label>Estado</label>
-                    <input type="text" className="form-modal-input" value={form.estadoId} onChange={e => setForm(p => ({ ...p, estadoId: e.target.value }))} placeholder="Ej: Táchira" />
+                    <label>Estado <span className="required-star">*</span></label>
+                    <select className="form-modal-select" value={form.estadoId} onChange={e => setForm(p => ({ ...p, estadoId: e.target.value, municipioId: '' }))}>
+                      <option value="">Seleccione...</option>
+                      {filteredEstados.map(e => <option key={e.ESTA_COD} value={e.ESTA_COD}>{e.ESTA_NOM}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-modal-group flex-1">
-                    <label>ID Municipio <span className="required-star">*</span></label>
-                    <input type="number" min="1" max="4" className="form-modal-input" value={form.municipioId} onChange={e => setForm(p => ({ ...p, municipioId: e.target.value }))} placeholder="1=San Cristóbal, 2=San José, 3=Libertador, 4=Maneiro" />
-                    <small style={{ color: 'var(--color-text-light)', fontSize: '11px', display: 'block', marginTop: 4 }}>IDs válidos: 1 (Táchira), 2 (Táchira), 3 (Mérida), 4 (Nueva Esparta)</small>
+                    <label>Municipio <span className="required-star">*</span></label>
+                    <select className="form-modal-select" value={form.municipioId} onChange={e => setForm(p => ({ ...p, municipioId: e.target.value }))}>
+                      <option value="">Seleccione...</option>
+                      {filteredMunicipios.map(m => <option key={m.MUNI_COD} value={m.MUNI_COD}>{m.MUNI_NOM}</option>)}
+                    </select>
                   </div>
                   <div className="form-modal-group flex-1">
-                    <label>Parroquia</label>
+                    <label>Parroquia / Dirección</label>
                     <input type="text" className="form-modal-input" value={form.parish} onChange={e => setForm(p => ({ ...p, parish: e.target.value }))} placeholder="Opcional" />
                   </div>
                 </div>
