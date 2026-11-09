@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { geoService } from '../services/geo'
 import { prestadorPaso1Schema, prestadorPaso2Schema, zodErrors } from '../schemas/entidades'
-import { CategoryIcon, IconArrowLeft, IconArrowRight, IconCheck } from './Icons.jsx'
+import { IconArrowLeft, IconArrowRight, IconCheck } from './Icons.jsx'
+import { useFeedback } from './feedbackContext.js'
+import { normalizeGeoName } from '../lib/geoNames.js'
 
 const CATEGORIES = [
   { value: 'Alojamiento Turístico', label: 'Alojamiento Turístico' },
@@ -44,10 +46,14 @@ const INITIAL_DATA = {
 }
 
 export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: ctxRegionId, regionName = 'Visión Nacional' }) {
+  const { toast } = useFeedback()
   const [step, setStep] = useState(1)
   const [data, setData] = useState({ ...INITIAL_DATA })
   const [errors, setErrors] = useState({})
   const [regions, setRegions] = useState([])
+  const [showNewMun, setShowNewMun] = useState(false)
+  const [newMunName, setNewMunName] = useState('')
+  const [newMunError, setNewMunError] = useState('')
   const [estados, setEstados] = useState([])
   const [municipios, setMunicipios] = useState([])
 
@@ -144,11 +150,45 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
     setData({ ...INITIAL_DATA })
     setStep(1)
     setErrors({})
+    setShowNewMun(false)
+    setNewMunName('')
+    setNewMunError('')
     onClose()
   }
 
   const filteredEstados = estados.filter(e => !data.regionId || e.ESTA_REGI === parseInt(data.regionId))
   const filteredMunicipios = municipios.filter(m => !data.estadoId || m.MUNI_EST === parseInt(data.estadoId))
+
+  const handleCreateMunicipio = async () => {
+    const name = newMunName.replace(/\s+/g, ' ').trim()
+    if (!data.estadoId) {
+      toast.warning('Seleccione primero el estado para agregar un municipio.')
+      return
+    }
+    if (name.length < 2) {
+      setNewMunError('Escribe un nombre válido (mínimo 2 letras).')
+      return
+    }
+    const norm = normalizeGeoName(name)
+    const dup = municipios.find(m => m.MUNI_EST === parseInt(data.estadoId) && normalizeGeoName(m.MUNI_NOM) === norm)
+    if (dup) {
+      setNewMunError(`Ya existe «${dup.MUNI_NOM}» en este estado (no se permite repetir aunque cambien mayúsculas o acentos).`)
+      return
+    }
+    try {
+      const res = await geoService.createMunicipio({ nombre: name, estadoId: parseInt(data.estadoId) })
+      const mun = res?.data || res
+      setMunicipios(prev => [...prev, mun].sort((a, b) => a.MUNI_NOM.localeCompare(b.MUNI_NOM)))
+      setData(p => ({ ...p, municipioId: String(mun.MUNI_COD) }))
+      setErrors(prev => ({ ...prev, municipioId: '' }))
+      setShowNewMun(false)
+      setNewMunName('')
+      setNewMunError('')
+      toast.success(`El municipio «${mun.MUNI_NOM}» fue creado y seleccionado.`, { title: 'Municipio agregado' })
+    } catch (err) {
+      setNewMunError(err.message || 'No se pudo crear el municipio.')
+    }
+  }
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
@@ -250,21 +290,48 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
                   {errors.estadoId && <span className="field-error">{errors.estadoId}</span>}
                 </div>
               </div>
-              <div className="wizard-form-grid two-col">
-                <div className="form-modal-group">
-                  <label>Municipio *</label>
-                  <select className={`form-modal-select ${errors.municipioId ? 'input-error' : ''}`} value={data.municipioId} onChange={set('municipioId')}>
-                    <option value="">Seleccione...</option>
-                    {filteredMunicipios.map(m => <option key={m.MUNI_COD} value={m.MUNI_COD}>{m.MUNI_NOM}</option>)}
-                  </select>
-                  {errors.municipioId && <span className="field-error">{errors.municipioId}</span>}
+                <div className="wizard-form-grid two-col">
+                  <div className="form-modal-group">
+                    <label>Municipio *</label>
+                    <select className={`form-modal-select ${errors.municipioId ? 'input-error' : ''}`} value={data.municipioId} onChange={set('municipioId')}>
+                      <option value="">Seleccione...</option>
+                      {filteredMunicipios.map(m => <option key={m.MUNI_COD} value={m.MUNI_COD}>{m.MUNI_NOM}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!data.estadoId}
+                      onClick={() => { setShowNewMun(v => !v); setNewMunError(''); setNewMunName('') }}
+                      style={{
+                        background: 'none', border: 'none', padding: '4px 0', cursor: data.estadoId ? 'pointer' : 'not-allowed',
+                        color: data.estadoId ? 'var(--color-primary)' : 'var(--color-text-light)',
+                        fontSize: 12, fontWeight: 600, textAlign: 'left',
+                      }}
+                    >
+                      {showNewMun ? '✕ Cancelar agregado' : '＋ Agregar municipio no listado'}
+                    </button>
+                    {showNewMun && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <input
+                          type="text"
+                          className="form-modal-input"
+                          style={{ flex: 1 }}
+                          value={newMunName}
+                          onChange={e => { setNewMunName(e.target.value); setNewMunError('') }}
+                          placeholder="Nombre del nuevo municipio"
+                          autoFocus
+                        />
+                        <button type="button" className="btn-modal-action approve" onClick={handleCreateMunicipio}>Agregar</button>
+                      </div>
+                    )}
+                    {newMunError && <span className="field-error" style={{ display: 'block', marginTop: 4 }}>{newMunError}</span>}
+                    {!newMunError && errors.municipioId && <span className="field-error">{errors.municipioId}</span>}
+                  </div>
+                  <div className="form-modal-group">
+                    <label>Dirección *</label>
+                    <input type="text" className={`form-modal-input ${errors.address ? 'input-error' : ''}`} placeholder="Calle, Nro, Sector" value={data.address} onChange={set('address')} />
+                    {errors.address && <span className="field-error">{errors.address}</span>}
+                  </div>
                 </div>
-                <div className="form-modal-group">
-                  <label>Dirección *</label>
-                  <input type="text" className={`form-modal-input ${errors.address ? 'input-error' : ''}`} placeholder="Calle, Nro, Sector" value={data.address} onChange={set('address')} />
-                  {errors.address && <span className="field-error">{errors.address}</span>}
-                </div>
-              </div>
 
               <div className="form-modal-group">
                 <label>Coordenadas (Google Maps)</label>

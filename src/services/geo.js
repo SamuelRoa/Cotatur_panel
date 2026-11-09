@@ -9,4 +9,5 @@ export const geoService = {
   getPaises: (params) => api.get('/geo/paises', { params }),
   getTiposTurismo: (params) => api.get('/geo/tipos-turismo', { params }),
   getTiposEvento: (params) => api.get('/geo/tipos-evento', { params }),
+  createMunicipio: (data) => api.post('/geo/municipios', data),
 };
