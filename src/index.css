@@ -39,31 +39,40 @@
   --tone-purple: #7e2e90;
   --tone-orange: #f37021;
 
-  /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #4C8C24, #69B33B);
+  /* Rellenos sólidos institucionales — sin degradados decorativos.
+     Los nombres históricos de gradiente se conservan como alias sólidos
+     para que las hojas que aún los referencian no se rompan. */
+  --gradient-primary: #4C8C24;
   /* Relleno sólido de botones: garantiza contraste AA con texto blanco */
   --color-primary-solid: #4C8C24;
   --color-primary-solid-hover: #37661A;
-  --gradient-primary-solid: linear-gradient(135deg, #4C8C24, #69B33B);
-  --gradient-accent: linear-gradient(135deg, #00A3A6, #33C5C8);
-  --gradient-hot: linear-gradient(135deg, #E52320, #F37021);
-  --gradient-cool: linear-gradient(135deg, #0054A6, #3A7BD5);
+  --gradient-primary-solid: #4C8C24;
+  --gradient-accent: #00A3A6;
+  --gradient-hot: #E52320;
+  --gradient-cool: #0054A6;
+  /* Cinta patchwork del logo "TUR": franjas duras, sin animación */
   --gradient-mosaic: linear-gradient(
     to right,
-    #E52320, #F37021, #FDC810, #79B443, #00A3A6, #0054A6, #7E2E90
+    #E52320 0 14.28%,
+    #F37021 0 28.57%,
+    #FDC810 0 42.85%,
+    #79B443 0 57.14%,
+    #00A3A6 0 71.42%,
+    #0054A6 0 85.71%,
+    #7E2E90 0 100%
   );
-  --gradient-glass: linear-gradient(135deg, rgba(247, 250, 246, 0.92), rgba(247, 250, 246, 0.55));
+  --gradient-glass: #f7faf6;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 15px rgba(76, 140, 36, 0.06);
-  --shadow-premium: 0 10px 30px -10px rgba(76, 140, 36, 0.12), 0 1px 3px rgba(0, 0, 0, 0.05);
-  --shadow-premium-lg: 0 20px 50px -12px rgba(76, 140, 36, 0.18), 0 4px 8px rgba(0, 0, 0, 0.04);
-  --shadow-input: 0 2px 4px rgba(0, 0, 0, 0.02);
-  --shadow-button: 0 4px 10px rgba(76, 140, 36, 0.15);
-  --shadow-button-hover: 0 8px 20px -6px rgba(76, 140, 36, 0.35);
-  --shadow-glow: 0 0 20px rgba(76, 140, 36, 0.15);
-  --shadow-colored: 0 8px 25px -6px rgba(76, 140, 36, 0.25);
+  /* Shadows — neutras, sin tinte verde */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-premium: 0 2px 10px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-premium-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-input: 0 0 0 0 transparent;
+  --shadow-button: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-button-hover: 0 2px 6px rgba(0, 0, 0, 0.14);
+  --shadow-glow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-colored: 0 2px 8px rgba(0, 0, 0, 0.1);
 
   /* Transitions */
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -72,11 +81,11 @@
   --transition-bounce: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   --transition-spring: 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Border radius scale */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  /* Border radius scale — sobria, casi cuadrada */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --radius-full: 9999px;
 
   box-sizing: border-box;
@@ -157,7 +166,7 @@ body {
   --color-on-solid: #ffffff;
   --color-primary-solid: #2f7416;
   --color-primary-solid-hover: #3a8a1e;
-  --gradient-primary-solid: linear-gradient(135deg, #2f7416, #3a8a1e);
+  --gradient-primary-solid: #2f7416;
   --color-border-soft: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);
   --color-hover-tint: rgba(124, 199, 79, 0.14);
@@ -170,17 +179,17 @@ body {
   --tone-blue: #6fb6ff;
   --tone-purple: #d69ad6;
   --tone-orange: #ffab70;
-  --gradient-glass: linear-gradient(135deg, rgba(21,30,37,0.86), rgba(21,30,37,0.62));
+  --gradient-glass: #151E25;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 4px 16px -6px rgba(0, 0, 0, 0.7);
   --shadow-premium: 0 10px 30px -12px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-premium-lg: 0 26px 60px -20px rgba(0, 0, 0, 0.9), 0 4px 10px rgba(0, 0, 0, 0.5);
   --shadow-input: 0 2px 6px rgba(0, 0, 0, 0.35);
-  --shadow-button: 0 6px 16px -8px rgba(124, 199, 79, 0.5);
-  --shadow-button-hover: 0 10px 24px -8px rgba(124, 199, 79, 0.65);
-  --shadow-glow: 0 0 24px rgba(124, 199, 79, 0.28);
-  --shadow-colored: 0 10px 28px -8px rgba(124, 199, 79, 0.42);
+  --shadow-button: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-button-hover: 0 2px 6px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-colored: 0 2px 8px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
 
@@ -189,77 +198,37 @@ body {
   color: var(--color-text-main);
 }
 
-/* Aurora firma — amanecer andino (se usa en login + header dashboard) */
-.aurora {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-.aurora-blob {
-  position: absolute;
-  width: 55vmax;
-  height: 55vmax;
-  border-radius: 9999px;
-  filter: blur(70px);
-  opacity: 0.4;
-  will-change: transform;
-  animation: aurora-drift 26s ease-in-out infinite alternate;
-}
-.aurora-blob.a1 {
-  left: -15vmax;
-  top: -20vmax;
-  background: radial-gradient(circle at 40% 40%, rgba(76, 140, 36, 0.5), transparent 65%);
-}
-.aurora-blob.a2 {
-  right: -18vmax;
-  top: -12vmax;
-  animation-delay: -9s;
-  background: radial-gradient(circle at 60% 40%, rgba(0, 163, 166, 0.45), transparent 65%);
-}
-.aurora-blob.a3 {
-  left: 20%;
-  top: -28vmax;
-  animation-delay: -17s;
-  background: radial-gradient(circle at 50% 50%, rgba(253, 200, 16, 0.35), transparent 65%);
-}
-[data-theme="dark"] .aurora-blob {
-  opacity: 0.55;
-}
-@keyframes aurora-drift {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(6vmax, 4vmax, 0) scale(1.12); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .aurora-blob { animation: none; }
+/* Cinta patchwork del logo "TUR" — franjas planas de colores duros.
+   Es la única marca de color múltiple permitida: siempre estática. */
+.ribbon {
+  height: 4px;
+  width: 100%;
+  background: var(--gradient-mosaic);
 }
 
-/* Display editorial + duotono + foco */
+/* Versión corta para títulos de sección */
+.ribbon-inline {
+  display: inline-block;
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--gradient-mosaic);
+}
+
+/* Rótulo en versalitas que precede a los títulos (estilo institucional) */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0 0 6px;
+}
+
+/* Display editorial */
 .font-display {
   font-family: var(--font-display);
   letter-spacing: -0.015em;
-}
-.duotone {
-  position: relative;
-  overflow: hidden;
-}
-.duotone img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.duotone::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(160deg, rgba(76, 140, 36, 0.28), transparent 55%),
-    linear-gradient(20deg, rgba(0, 163, 166, 0.22), transparent 60%);
-  mix-blend-mode: multiply;
-}
-[data-theme="dark"] .duotone::after {
-  mix-blend-mode: overlay;
 }
 :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid var(--color-input-focus);
@@ -439,12 +408,6 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(var(--color-primary-rgb), 0); }
 }
 
-@keyframes pulseRing {
-  0% { transform: scale(0.95); opacity: 0.7; }
-  50% { transform: scale(1.05); opacity: 1; }
-  100% { transform: scale(0.95); opacity: 0.7; }
-}
-
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -453,12 +416,6 @@ body {
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
-}
-
-@keyframes floatSlow {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  33% { transform: translateY(-4px) rotate(1deg); }
-  66% { transform: translateY(2px) rotate(-0.5deg); }
 }
 
 @keyframes rotateIn {
@@ -480,21 +437,10 @@ body {
   100% { transform: translateX(100%); }
 }
 
-@keyframes borderGlow {
-  0%, 100% { border-color: rgba(var(--color-primary-rgb), 0.1); }
-  50% { border-color: rgba(var(--color-primary-rgb), 0.3); }
-}
-
 @keyframes scalePulse {
   0% { transform: scale(1); }
   50% { transform: scale(1.05); }
   100% { transform: scale(1); }
-}
-
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
 }
 
 @keyframes wobble {

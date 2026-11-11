@@ -550,14 +550,9 @@ function App() {
           <button className="theme-fab" onClick={cycleTheme} title={`Tema: ${themeLabel}. Clic para cambiar.`} aria-label={`Cambiar tema. Actual: ${themeLabel}`}>
             <ThemeIcon size={20} />
           </button>
-          <div className="aurora" aria-hidden="true">
-            <span className="aurora-blob a1" />
-            <span className="aurora-blob a2" />
-            <span className="aurora-blob a3" />
-          </div>
           {/* Main Login Card */}
           <div className="login-card">
-            {/* Multicolored strip matching logo */}
+            {/* Cinta patchwork del logo "TUR" */}
             <div className="mosaic-strip"></div>
             
             {/* Header and Form Area */}
