@@ -10,6 +10,88 @@
   pointer-events: none;
 }
 
+/* ─── Banner global de conexión ──────────────────────────────────────────── */
+
+.connection-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.connection-banner svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Servidor caído: rojo institucional */
+.connection-banner--server {
+  background: var(--color-danger-solid, #C62828);
+}
+
+/* Sin internet en el equipo: ámbar de advertencia */
+.connection-banner--net {
+  background: #B26A00;
+}
+
+.connection-banner__text {
+  flex: 0 1 auto;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.connection-banner__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.connection-banner__retry:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.connection-banner__retry:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.connection-banner__retry svg {
+  width: 13px;
+  height: 13px;
+}
+
+.connection-banner__spin {
+  animation: connection-spin 0.9s linear infinite;
+}
+
+@keyframes connection-spin {
+  to { transform: rotate(360deg); }
+}
+
+[data-theme="dark"] .connection-banner--net {
+  background: #8a5a00;
+}
+
+
 .feedback-toast {
   position: relative;
   display: flex;

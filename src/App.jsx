@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf'
 import './App.css'
 import cotaturLogo from './assets/cotatur_logo.png'
 import minturLogo from './assets/mintur_logo.png'
+import { ConnectionBanner } from './components/ConnectionBanner.jsx'
 
 // El logo depende de las credenciales: COTATUR solo si el usuario entra con
 // una cuenta @cotatur.gob.ve; en cualquier otro caso se muestra MINTUR.
@@ -339,9 +340,15 @@ function App() {
     } catch { /* refresco de tabla ignorado */ }
   }
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     setExportingPdf(true)
+    toast.info('Se está generando el reporte PDF del dashboard. La descarga comenzará en unos segundos.', {
+      title: 'Descarga en curso',
+    })
     try {
+      // Pausa mínima para que React pinte el estado «Generando...» del botón
+      // antes del trabajo síncrono de jsPDF (de lo contrario nunca se ve).
+      await new Promise((resolve) => setTimeout(resolve, 120))
       const pdf = new jsPDF('p', 'mm', 'a4')
       const pageW = pdf.internal.pageSize.getWidth()
       const marg = 14
@@ -428,9 +435,12 @@ function App() {
       pdf.save(`Reporte-${marcaPorCredencial(user?.email)}-${new Date().toISOString().slice(0, 10)}.pdf`)
       toast.success('El reporte se generó y descargó correctamente.', { title: 'Reporte listo' })
     } catch (err) {
-      toast.error('No se pudo generar el reporte PDF: ' + err.message)
+      toast.error('No se pudo generar el reporte PDF. Detalle técnico: ' + (err.message || 'desconocido'), {
+        title: 'Descarga fallida',
+      })
+    } finally {
+      setExportingPdf(false)
     }
-    setExportingPdf(false)
   }
 
   const handleAddMerchantSubmit = async (e) => {
@@ -538,6 +548,7 @@ function App() {
 
   return (
     <div style={{ width: '100%' }}>
+      <ConnectionBanner />
       <AnimatePresence mode="wait">
       {currentView === 'login' ? (
         <motion.div

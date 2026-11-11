@@ -1,4 +1,5 @@
 import axios from "axios";
+import { connectionEvents, sessionEvents, shouldNotify } from "../lib/connection";
 
 const baseURL =
   import.meta.env.MODE === "production"
@@ -62,19 +63,40 @@ function friendlyError(error) {
 }
 
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // Cualquier respuesta exitosa confirma que el backend está vivo.
+    connectionEvents.up();
+    return response.data;
+  },
   async (error) => {
     const original = error.config;
     if (error.response?.status === 401 && original && !original._retried) {
       original._retried = true;
+      const hadSession = Boolean(localStorage.getItem("auth_token"));
       const token = await tryRefresh();
       if (token) {
         original.headers = original.headers || {};
         original.headers.Authorization = `Bearer ${token}`;
         return api(original);
       }
+      // Solo se avisa si había una sesión activa que se perdió; un 401 de
+      // login con credenciales incorrectas no debe disparar este aviso.
+      if (hadSession && shouldNotify("sesion-expirada")) {
+        sessionEvents.expired();
+      }
       logout();
     }
+
+    // Fallos sin respuesta del backend = problema de conectividad.
+    const isNetworkIssue =
+      !error.response ||
+      error.code === "ERR_NETWORK" ||
+      error.code === "ECONNABORTED" ||
+      /timeout/i.test(error.message || "");
+    if (isNetworkIssue) {
+      connectionEvents.down(navigator.onLine ? "server" : "net");
+    }
+
     const message = error.response?.data?.message || friendlyError(error);
     return Promise.reject(new Error(message));
   },
