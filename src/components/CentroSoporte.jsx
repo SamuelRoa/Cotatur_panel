@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { consultasService } from '../services/consultas'
 import { opinionesService } from '../services/opiniones'
-import mockData from '../services/mockData.js'
 import { IconStar } from './Icons.jsx'
 import { useFeedback } from './feedbackContext.js'
 
@@ -29,12 +28,9 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
         consultasService.getAll({ page: ticketPage, limit: 10 }),
         opinionesService.getAll({ page: ratingPage, limit: 10 }),
       ])
-      let ticketsData = consultasRes.consultas || []
-      let ratingsData = opinionesRes.opiniones || []
-      if (ticketsData.length === 0 && ratingsData.length === 0) {
-        ticketsData = mockData.buildConsultas()
-        ratingsData = mockData.buildOpiniones()
-      }
+      // Listas vacías = sin resultados reales. Nunca se pintan datos ficticios.
+      const ticketsData = consultasRes.consultas || []
+      const ratingsData = opinionesRes.opiniones || []
       setTickets(ticketsData)
       setRatings(ratingsData)
       setTicketTotalItems(consultasRes.meta?.total ?? ticketsData.length)
@@ -47,14 +43,12 @@ export default function CentroSoporte({ regionId = null, regionName = 'Visión N
         loadErrorRef.current = true
         toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
       }
-      const mockT = mockData.buildConsultas()
-      const mockR = mockData.buildOpiniones()
-      setTickets(mockT)
-      setRatings(mockR)
-      setTicketTotalItems(mockT.length)
-      setTicketTotalPages(Math.max(1, Math.ceil(mockT.length / 10)))
-      setRatingTotalItems(mockR.length)
-      setRatingTotalPages(Math.max(1, Math.ceil(mockR.length / 10)))
+      setTickets([])
+      setRatings([])
+      setTicketTotalItems(0)
+      setTicketTotalPages(1)
+      setRatingTotalItems(0)
+      setRatingTotalPages(1)
     }
     setLoading(false)
   }

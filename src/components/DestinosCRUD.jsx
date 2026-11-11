@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
-import mockData from '../services/mockData.js'
 import { useFeedback } from './feedbackContext.js'
 import { normalizeGeoName } from '../lib/geoNames.js'
 import { IconCheck } from './Icons.jsx'
@@ -72,16 +71,10 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
     destinosService.getAll(params)
       .then((res) => {
         const data = res.destinos || []
+        // Lista vacía = sin resultados reales. Nunca se pintan datos ficticios.
         setDestinos(data)
         setTotalItems(res.meta?.total ?? data.length)
         setTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
-        if (data.length === 0) {
-          const mock = mockData.buildDestinos()
-          const filtered = rId ? mock.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mock
-          setDestinos(filtered)
-          setTotalItems(filtered.length)
-          setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
-        }
         loadErrorRef.current = false
         setLoading(false)
       })
@@ -90,11 +83,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
           loadErrorRef.current = true
           toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
         }
-        const mock = mockData.buildDestinos()
-        const filtered = rId ? mock.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mock
-        setDestinos(filtered)
-        setTotalItems(filtered.length)
-        setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
+        setDestinos([])
+        setTotalItems(0)
+        setTotalPages(1)
         setLoading(false)
       })
   }, [regionId, filterRegion, page, search, toast])

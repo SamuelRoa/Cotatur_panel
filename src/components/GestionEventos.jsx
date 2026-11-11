@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { eventosService } from '../services/eventos'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
-import mockData from '../services/mockData.js'
 import { useFeedback } from './feedbackContext.js'
 
 const eventTypes = ['Cultural', 'Feria', 'Gastronómico', 'Deportivo', 'Religioso', 'Musical']
@@ -55,13 +54,8 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
     const rId = filterRegion || regionId
     if (rId) params.regionId = rId
     eventosService.getAll(params).then((res) => {
-      const data = res.eventos || []
-      if (data.length === 0) {
-        const mock = mockData.buildEventos()
-        setEvents(rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock)
-      } else {
-        setEvents(data)
-      }
+      // Lista vacía = sin resultados reales. Nunca se pintan datos ficticios.
+      setEvents(res.eventos || [])
       loadErrorRef.current = false
       setLoading(false)
     }).catch(() => {
@@ -69,8 +63,7 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
         loadErrorRef.current = true
         toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
       }
-      const mock = mockData.buildEventos()
-      setEvents(rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock)
+      setEvents([])
       setLoading(false)
     })
     const tableParams = { page: tablePage, limit: 10 }
@@ -82,11 +75,9 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
       setTableTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
       loadErrorRef.current = false
     }).catch(() => {
-      const mock = mockData.buildEventos()
-      const filtered = rId ? mock.filter(e => e.regionId === parseInt(rId) || e.regionId === rId) : mock
-      setTableEvents(filtered)
-      setTableTotalItems(filtered.length)
-      setTableTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
+      setTableEvents([])
+      setTableTotalItems(0)
+      setTableTotalPages(1)
     })
   }, [regionId, filterRegion, tablePage])
 
@@ -278,6 +269,13 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
               </tr>
             </thead>
             <tbody>
+              {tableEvents.length === 0 && (
+                <tr>
+                  <td className="table-td" colSpan={5} style={{ textAlign: 'center', padding: '30px 0', color: 'var(--color-text-light)' }}>
+                    Sin resultados: no hay eventos que coincidan con los filtros actuales.
+                  </td>
+                </tr>
+              )}
               {tableEvents.map(ev => (
                 <tr key={ev.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(ev)}>
                   <td className="table-td">{ev.title}</td>

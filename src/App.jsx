@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { jsPDF } from 'jspdf'
 import './App.css'
+import cotaturLogo from './assets/cotatur_logo.png'
+import minturLogo from './assets/mintur_logo.png'
+
+// El logo depende de las credenciales: COTATUR solo si el usuario entra con
+// una cuenta @cotatur.gob.ve; en cualquier otro caso se muestra MINTUR.
 import DestinosCRUD from './components/DestinosCRUD.jsx'
 import RouteDesigner from './components/RouteDesigner.jsx'
 import DirectorioProveedores from './components/DirectorioProveedores.jsx'
@@ -27,6 +32,13 @@ import { eventosService } from './services/eventos'
 import { rutasService } from './services/rutas'
 import { usuariosService } from './services/usuarios'
 import { connectSocket, disconnectSocket } from './services/socket'
+
+// El logo/marca dependen de las credenciales: COTATUR solo si el usuario
+// entra con una cuenta @cotatur.gob.ve; en cualquier otro caso es MINTUR.
+const esCuentaCotatur = (cuenta) =>
+  (cuenta || '').trim().toLowerCase().endsWith('@cotatur.gob.ve');
+const logoPorCredencial = (cuenta) => (esCuentaCotatur(cuenta) ? cotaturLogo : minturLogo);
+const marcaPorCredencial = (cuenta) => (esCuentaCotatur(cuenta) ? 'COTATUR' : 'MINTUR');
 
 function App() {
   // Form states (Login)
@@ -90,6 +102,13 @@ function App() {
       return null
     }
   })
+
+  // --- Roles del panel -------------------------------------------------
+  // El superadmin es el rol "Administrador"; el "Admin Estadal" solo opera
+  // dentro de su estado (el backend también lo hace cumplir).
+  const esSuperadmin = user?.rol === 'Administrador' || user?.rolId === 55
+  const esAdminEstadal = user?.rol === 'Admin Estadal' || user?.rolId === 61
+  const puedeGestionarContenido = esSuperadmin || esAdminEstadal || user?.rol === 'Gestor Turístico'
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, content: '' })
   const [tablePage, setTablePage] = useState(1)
   const [tableSearch, setTableSearch] = useState('')
@@ -277,15 +296,25 @@ function App() {
       'Transporte Turístico': 'transp',
       'Guía de Turismo': 'guia',
     }
+    // municipioId es obligatorio en el backend (PROV_MUN no admite nulos).
+    // Sin esta validación el alta fallaba con 422 sin mensaje claro.
+    const municipioId = parseInt(merchantData.municipioId, 10)
+    if (!municipioId || Number.isNaN(municipioId)) {
+      toast.error('Debe seleccionar región, estado y municipio antes de registrar el prestador.', {
+        title: 'Falta la ubicación',
+      })
+      return
+    }
+
     let payload = {
       nombre: merchantData.name,
       tipo: tipoMap[merchantData.category] || merchantData.category,
       rif: merchantData.rif,
+      municipioId,
     }
     if (merchantData.email) payload.email = merchantData.email
     if (merchantData.phone) payload.telefono = merchantData.phone
     if (merchantData.address) payload.direccion = merchantData.address
-    if (merchantData.municipioId) payload.municipioId = parseInt(merchantData.municipioId)
     if (merchantData.coordinates) {
       const coords = merchantData.coordinates.match(/(-?\d+\.?\d*)/g)
       if (coords && coords.length >= 2) {
@@ -328,7 +357,7 @@ function App() {
       const dateStr = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
       title('Reporte del Dashboard', 18)
-      line(`Sistema de Gesti\u00f3n Tur\u00edstica COTATUR`)
+      line(`Sistema de Gesti\u00f3n Tur\u00edstica ${marcaPorCredencial(user?.email)}`)
       line(`Generado: ${dateStr}${regionId ? ` — Regi\u00f3n: ${regionName}` : ' — Visi\u00f3n Nacional'}`)
       blank()
       hr()
@@ -394,9 +423,9 @@ function App() {
       y += 4
       pdf.setFontSize(8)
       pdf.setTextColor(150, 150, 150)
-      pdf.text(`Reporte generado autom\u00e1ticamente por COTATUR — ${new Date().toISOString().slice(0, 10)}`, marg, y)
+      pdf.text(`Reporte generado autom\u00e1ticamente por ${marcaPorCredencial(user?.email)} — ${new Date().toISOString().slice(0, 10)}`, marg, y)
 
-      pdf.save(`Reporte-COTATUR-${new Date().toISOString().slice(0, 10)}.pdf`)
+      pdf.save(`Reporte-${marcaPorCredencial(user?.email)}-${new Date().toISOString().slice(0, 10)}.pdf`)
       toast.success('El reporte se generó y descargó correctamente.', { title: 'Reporte listo' })
     } catch (err) {
       toast.error('No se pudo generar el reporte PDF: ' + err.message)
@@ -533,9 +562,9 @@ function App() {
             
             {/* Header and Form Area */}
             <div className="login-card-main">
-              {/* Brand Logo Image */}
+              {/* Brand Logo Image — cambia según la cuenta que se esté escribiendo */}
               <div className="brand-logo-container">
-                <div style={{fontSize:42,fontWeight:700,color:'var(--color-primary)'}} className="font-display">MINTUR</div>
+                <img src={logoPorCredencial(username)} alt="COTATUR / MINTUR" className="brand-logo-img" />
               </div>
               <h2 className="brand-subtitle">Plataforma Georreferenciada Nacional</h2>
 
@@ -670,7 +699,7 @@ function App() {
               </svg>
             </div>
             <p className="copyright-text">
-              &copy; 2026 MINTUR - Ministerio del Poder Popular para el Turismo. Todos los derechos reservados.
+              &copy; 2026 {marcaPorCredencial(username)} — Corporación de Turismo. Todos los derechos reservados.
             </p>
           </footer>
 
@@ -686,7 +715,7 @@ function App() {
           {/* Sidebar */}
           <aside className="dashboard-sidebar">
             <div className="sidebar-brand-container">
-              <span className="sidebar-logo-text font-display">MINTUR</span>
+              <img src={logoPorCredencial(user?.email)} alt="COTATUR / MINTUR" className="sidebar-logo" />
               <p className="sidebar-brand-sub">{!regionId ? 'Turismo Nacional VZLA' : regionName}</p>
             </div>
             
@@ -792,7 +821,7 @@ function App() {
                 </svg>
                 <span>Soporte</span>
               </button>
-              {(user?.rol === 'Administrador' || user?.rolId === 55) && (
+              {(esSuperadmin || esAdminEstadal) && (
                 <button
                   className={`sidebar-nav-item ${activeNav === 'papelera' ? 'active' : ''}`}
                   onClick={() => setActiveNav('papelera')}
@@ -806,7 +835,7 @@ function App() {
                   <span>Papelera</span>
                 </button>
               )}
-              {(user?.rol === 'Administrador' || user?.rolId === 55) && (
+              {(esSuperadmin || esAdminEstadal) && (
                 <button 
                   className={`sidebar-nav-item ${activeNav === 'configuracion' ? 'active' : ''}`} 
                   onClick={() => setActiveNav('configuracion')}
@@ -825,12 +854,19 @@ function App() {
           <main className="dashboard-main">
             {/* Header */}
             <header className="dashboard-header">
-              <h2 className="header-portal-title">MINTUR Portal</h2>
+              <h2 className="header-portal-title">{marcaPorCredencial(user?.email)} Portal</h2>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={!(user?.rol === 'Administrador' || user?.rolId === 55)}>
-                  {regions.map(r => <option key={r.id ?? 'national'} value={r.id ?? ''}>{r.name}</option>)}
-                </select>
+                {esAdminEstadal && user?.estado ? (
+                  <span className="region-selector" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'default' }} title="Alcance: solo la información de tu estado">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                    {user.estado}
+                  </span>
+                ) : (
+                  <select className="region-selector" value={regionId ?? ''} onChange={(e) => setRegionId(e.target.value ? parseInt(e.target.value) : null)} title="Selector Global de Región" disabled={!esSuperadmin}>
+                    {regions.map(r => <option key={r.id ?? 'national'} value={r.id ?? ''}>{r.name}</option>)}
+                  </select>
+                )}
 
                 <div className="header-search-bar">
                   <span className="header-search-icon">
@@ -864,7 +900,7 @@ function App() {
                   className="header-profile-widget" 
                   onClick={() => triggerModal(
                     'Información del Usuario',
-                    user ? `Usuario: ${user.email || user.username || '—'}\nNombre: ${user.nombre || user.fullName || '—'}\nCargo: ${user.cargo || '—'}\nCorreo: ${user.email || '—'}\nRol: ${user.rol || role || '—'}`
+                    user ? `Usuario: ${user.email || user.username || '—'}\nNombre: ${user.nombre || user.fullName || '—'}\nCargo: ${user.cargo || '—'}\nCorreo: ${user.email || '—'}\nRol: ${user.rol || role || '—'}${user.estado ? `\nEstado: ${user.estado}` : ''}${esAdminEstadal ? '\nAlcance: solo información de tu estado' : ''}`
                           : 'Usuario no identificado'
                   )}
                   title="Información del usuario"
@@ -877,7 +913,7 @@ function App() {
                   </div>
                   <div className="profile-info-text">
                     <span className="profile-name">{user?.nombre || user?.fullName || user?.email || 'Usuario'}</span>
-                    <span className="profile-role">{user?.cargo || user?.rol || role || '—'}</span>
+                    <span className="profile-role">{user?.estado ? `${user.rol || role || '—'} · ${user.estado}` : (user?.cargo || user?.rol || role || '—')}</span>
                   </div>
                 </button>
 
@@ -951,7 +987,7 @@ function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Destinos Georreferenciados</span><span className="metric-value">{totalGeoreferencedCount}</span><span className="metric-trend blue">◉ coordenadas GPS</span></div><div className="metric-icon-box blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" /></svg></div></div>
+                        <div className="metric-card"><div className="metric-data"><span className="metric-title">Destinos Georreferenciados</span><span className="metric-value">{totalGeoreferencedCount}</span><span className="metric-trend blue">◊ coordenadas GPS</span></div><div className="metric-icon-box blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" /></svg></div></div>
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Prestadores Registrados</span><span className="metric-value">{totalRegisteredCount.toLocaleString()}</span><span className="metric-trend green">▲ registrados</span></div><div className="metric-icon-box green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg></div></div>
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Eventos Programados</span><span className="metric-value">{dashboardStats.eventos}</span><span className="metric-trend purple"><IconDot size={13} /> {eventosEsteMes} este mes</span></div><div className="metric-icon-box purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg></div></div>
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Rutas Turísticas</span><span className="metric-value">{totalRutasCount}</span><span className="metric-trend orange">⟐ {Object.keys(rutasByRegion).length} regiones</span></div><div className="metric-icon-box orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg></div></div>
@@ -1074,7 +1110,7 @@ function App() {
                           <button className="btn-page-arrow" disabled={tablePage >= tableTotalPages} onClick={() => setTablePage(p => Math.min(tableTotalPages, p + 1))} title="Siguiente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg></button>
                         </div></div>
                       </section>
-                      <footer style={{marginTop:'24px',textAlign:'center',fontSize:'12px',color:'var(--color-text-light)'}}>© 2026 MINTUR - Ministerio del Poder Popular para el Turismo.</footer>
+                      <footer style={{marginTop:'24px',textAlign:'center',fontSize:'12px',color:'var(--color-text-light)'}}>© 2026 {marcaPorCredencial(user?.email)} — Corporación de Turismo.</footer>
                       {tooltip.visible && <div className="chart-tooltip" style={{left: tooltip.x + 10, top: tooltip.y - 10}}>{tooltip.content}</div>}
                     </div>
                   case 'destinos':
@@ -1092,7 +1128,7 @@ function App() {
                   case 'soporte':
                     return <CentroSoporte regionId={regionId} regionName={regionName} />
                   case 'configuracion':
-                    return <ConfiguracionSistema regionId={regionId} regionName={regionName} />
+                    return <ConfiguracionSistema regionId={regionId} regionName={regionName} currentUser={user} />
                   case 'papelera':
                     return <Papelera regionName={regionName} />
                    case 'validation':
@@ -1253,7 +1289,7 @@ function App() {
                   >
                     <option value="Alojamiento Turístico">Alojamiento Turístico</option>
                     <option value="Gastronomía Regional">Gastronomía Regional</option>
-                    <option value="Agencia de Viajes">✈️ Agencia de Viajes</option>
+                    <option value="Agencia de Viajes">✉️ Agencia de Viajes</option>
                   </select>
                 </div>
 

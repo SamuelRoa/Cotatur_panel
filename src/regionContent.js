@@ -76,13 +76,13 @@ const regionModules = {
       'Plan Nacional de Turismo Sostenible 2026',
       'Campaña "Venezuela es tu Destino" – Promoción internacional',
       'Fichas oficiales de todos los destinos del país',
-      'Comunicados del Ministerio del Poder Popular para el Turismo',
+      'Comunicados de la Corporación de Turismo (COTATUR)',
       'Directorio nacional de prestadores certificados',
     ],
   },
   soporte: {
     items: [
-      'Oficina Central MINTUR – Caracas',
+      'Oficina Central COTATUR – Caracas',
       'Línea de atención al turista: 0800-TURISMO (0800-8874766)',
       'Correo: soporte@cotatur.gob.ve',
       'Horario de atención: Lun-Vie 8:00 AM – 4:00 PM',

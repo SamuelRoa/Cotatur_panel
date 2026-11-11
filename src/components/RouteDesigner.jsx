@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { rutasService } from '../services/rutas'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
-import mockData from '../services/mockData.js'
 import { useFeedback } from './feedbackContext.js'
 import { IconCheck } from './Icons.jsx'
 
@@ -58,22 +57,13 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
       rutasService.getAll(routeParams),
       destinosService.getAll(destParams),
     ]).then(([routesRes, destinosRes]) => {
-      let routesData = routesRes.rutas || []
-      let destsData = destinosRes.destinos || []
+      const routesData = routesRes.rutas || []
+      const destsData = destinosRes.destinos || []
+      // Listas vacías = sin resultados reales. Nunca se pintan datos ficticios.
       setRoutes(routesData)
       setTotalItems(routesRes.meta?.total ?? routesData.length)
       setTotalPages(Math.max(1, Math.ceil((routesRes.meta?.total ?? routesData.length) / 10)))
       setAvailableDestinations(destsData)
-      if (routesData.length === 0 && destsData.length === 0) {
-        const mockRutas = mockData.buildRutas()
-        const mockDests = mockData.buildDestinos()
-        routesData = rId ? mockRutas.filter(r => r.destinos.some(d => d.regionId === parseInt(rId) || d.regionId === rId)) : mockRutas
-        destsData = rId ? mockDests.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mockDests
-        setRoutes(routesData)
-        setAvailableDestinations(destsData)
-        setTotalItems(routesData.length)
-        setTotalPages(Math.max(1, Math.ceil(routesData.length / 10)))
-      }
       loadErrorRef.current = false
       setLoading(false)
     }).catch(() => {
@@ -81,14 +71,10 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
         loadErrorRef.current = true
         toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
       }
-      const mockRutas = mockData.buildRutas()
-      const mockDests = mockData.buildDestinos()
-      const rId = filterRegion || regionId
-      const filtered = rId ? mockRutas.filter(r => r.destinos.some(d => d.regionId === parseInt(rId) || d.regionId === rId)) : mockRutas
-      setRoutes(filtered)
-      setTotalItems(filtered.length)
-      setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
-      setAvailableDestinations(rId ? mockDests.filter(d => d.regionId === parseInt(rId) || d.regionId === rId) : mockDests)
+      setRoutes([])
+      setTotalItems(0)
+      setTotalPages(1)
+      setAvailableDestinations([])
       setLoading(false)
     })
   }

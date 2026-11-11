@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { prestadoresService } from '../services/prestadores'
 import { geoService } from '../services/geo'
-import mockData from '../services/mockData.js'
 import { CategoryIcon } from './Icons.jsx'
 import { useFeedback } from './feedbackContext.js'
 
@@ -35,16 +34,10 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
     prestadoresService.getAll(params)
       .then((res) => {
         const data = res.prestadores || []
+        // Lista vacía = sin resultados reales. Nunca se pintan datos ficticios.
         setProviders(data)
         setTotalItems(res.meta?.total ?? data.length)
         setTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
-        if (data.length === 0) {
-          const mock = mockData.buildPrestadores()
-          const filtered = rId ? mock.filter(p => p.regionId === parseInt(rId) || p.regionId === rId) : mock
-          setProviders(filtered)
-          setTotalItems(filtered.length)
-          setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
-        }
         loadErrorRef.current = false
         setLoading(false)
       })
@@ -53,11 +46,9 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
           loadErrorRef.current = true
           toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
         }
-        const mock = mockData.buildPrestadores()
-        const filtered = rId ? mock.filter(p => p.regionId === parseInt(rId) || p.regionId === rId) : mock
-        setProviders(filtered)
-        setTotalItems(filtered.length)
-        setTotalPages(Math.max(1, Math.ceil(filtered.length / 10)))
+        setProviders([])
+        setTotalItems(0)
+        setTotalPages(1)
         setLoading(false)
       })
   }, [regionId, filterRegion, page, search, filterCat])

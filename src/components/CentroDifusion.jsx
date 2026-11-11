@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { contenidoService } from '../services/contenido'
-import mockData from '../services/mockData.js'
 import { useFeedback } from './feedbackContext.js'
 
 const typeLabels = { noticia: 'Noticia', comunicado: 'Comunicado', ficha: 'Ficha de Destino' }
@@ -27,15 +26,11 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
     if (filterType !== 'todas') params.type = filterType
     contenidoService.getInstitucional(params)
       .then((res) => {
+        // Lista vacía = sin resultados reales. Nunca se pintan datos ficticios.
         const data = res.contenidos || []
         setPosts(data)
         setTotalItems(res.meta?.total ?? data.length)
         setTotalPages(Math.max(1, Math.ceil((res.meta?.total ?? data.length) / 10)))
-        if (data.length === 0) {
-          setPosts(mockData.buildContenidos())
-          setTotalItems(mockData.buildContenidos().length)
-          setTotalPages(Math.max(1, Math.ceil(mockData.buildContenidos().length / 10)))
-        }
         loadErrorRef.current = false
         setLoading(false)
       })
@@ -44,10 +39,9 @@ export default function CentroDifusion({ regionId = null, regionName = 'Visión 
           loadErrorRef.current = true
           toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
         }
-        const mock = mockData.buildContenidos()
-        setPosts(mock)
-        setTotalItems(mock.length)
-        setTotalPages(Math.max(1, Math.ceil(mock.length / 10)))
+        setPosts([])
+        setTotalItems(0)
+        setTotalPages(1)
         setLoading(false)
       })
   }, [page, search, filterType])

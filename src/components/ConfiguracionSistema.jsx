@@ -1,21 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { usuariosService } from '../services/usuarios'
 import { geoService } from '../services/geo'
-import mockData from '../services/mockData.js'
 import { RoleIcon } from './Icons.jsx'
 import { useFeedback } from './feedbackContext.js'
 
-export default function ConfiguracionSistema({ regionId = null, regionName = 'Visión Nacional' }) {
+export default function ConfiguracionSistema({ regionId = null, regionName = 'Visión Nacional', currentUser = null }) {
   const { toast } = useFeedback()
   const loadErrorRef = useRef(false)
+  // Roles que solo el administrador nacional puede otorgar.
+  const esSuperadmin = currentUser?.rol === 'Administrador' || currentUser?.rolId === 55
+  const esAdminEstadal = currentUser?.rol === 'Admin Estadal' || currentUser?.rolId === 61
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [municipios, setMunicipios] = useState([])
+  const [estados, setEstados] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeConfigTab, setActiveConfigTab] = useState('usuarios')
   const [showUserForm, setShowUserForm] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
-  const [userForm, setUserForm] = useState({ fullName: '', email: '', roleId: '', password: '', status: 'activo' })
+  const [userForm, setUserForm] = useState({ fullName: '', email: '', roleId: '', password: '', status: 'activo', estadoId: '' })
   const [userFormError, setUserFormError] = useState('')
   const [userPage, setUserPage] = useState(1)
   const [userTotalPages, setUserTotalPages] = useState(1)
@@ -27,30 +30,19 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
       usuariosService.getAll({ page: userPage, limit: 10 }),
       usuariosService.getRoles().then(r => r.data || r),
       geoService.getMunicipios().then(r => r.data || r),
+      geoService.getEstados().then(r => r.data || r).catch(() => []),
     ])
-      .then(([usersRes, rolesRes, munRes]) => {
+      .then(([usersRes, rolesRes, munRes, estRes]) => {
+        // Listas vacías = sin resultados reales. Nunca se pintan datos ficticios.
         const usersData = usersRes.usuarios || []
         setUsers(usersData)
         setUserTotalItems(usersRes.meta?.total ?? usersData.length)
         setUserTotalPages(Math.max(1, Math.ceil((usersRes.meta?.total ?? usersData.length) / 10)))
         const rolesData = Array.isArray(rolesRes) ? rolesRes : rolesRes.roles || []
         const munData = Array.isArray(munRes) ? munRes : munRes.municipios || []
-        if (usersData.length === 0 && rolesData.length === 0 && munData.length === 0) {
-          const mock = mockData.buildUsuarios()
-          setUsers(mock)
-          setUserTotalItems(mock.length)
-          setUserTotalPages(Math.max(1, Math.ceil(mock.length / 10)))
-          setRoles([
-            { ROLE_COD: 1, ROLE_NOM: 'Administrador', ROLE_DES: 'Acceso total al sistema' },
-            { ROLE_COD: 2, ROLE_NOM: 'Validador', ROLE_DES: 'Validación de prestadores turísticos' },
-            { ROLE_COD: 3, ROLE_NOM: 'Editor', ROLE_DES: 'Edición de contenido y destinos' },
-            { ROLE_COD: 4, ROLE_NOM: 'Soporte', ROLE_DES: 'Atención al usuario y consultas' },
-          ])
-          setMunicipios([])
-        } else {
-          setRoles(rolesData)
-          setMunicipios(munData)
-        }
+        setRoles(rolesData)
+        setMunicipios(munData)
+        setEstados(Array.isArray(estRes) ? estRes : estRes?.estados || [])
         loadErrorRef.current = false
         setLoading(false)
       })
@@ -59,17 +51,12 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
           loadErrorRef.current = true
           toast.error('No se pudo cargar la información desde el servidor. Verifica tu conexión e intenta de nuevo.', { title: 'Error de conexión' })
         }
-        const mock = mockData.buildUsuarios()
-        setUsers(mock)
-        setUserTotalItems(mock.length)
-        setUserTotalPages(Math.max(1, Math.ceil(mock.length / 10)))
-        setRoles([
-          { ROLE_COD: 1, ROLE_NOM: 'Administrador', ROLE_DES: 'Acceso total al sistema' },
-          { ROLE_COD: 2, ROLE_NOM: 'Validador', ROLE_DES: 'Validación de prestadores turísticos' },
-          { ROLE_COD: 3, ROLE_NOM: 'Editor', ROLE_DES: 'Edición de contenido y destinos' },
-          { ROLE_COD: 4, ROLE_NOM: 'Soporte', ROLE_DES: 'Atención al usuario y consultas' },
-        ])
+        setUsers([])
+        setUserTotalItems(0)
+        setUserTotalPages(1)
+        setRoles([])
         setMunicipios([])
+        setEstados([])
         setLoading(false)
       })
   }, [userPage])
@@ -78,13 +65,19 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
     setUserFormError('')
     if (u) {
       setEditingUser(u.id)
-      setUserForm({ fullName: u.name || '', email: u.email || '', roleId: u.roleId ?? '', password: '', status: u.active ? 'activo' : 'inactivo' })
+      setUserForm({ fullName: u.name || '', email: u.email || '', roleId: u.roleId ?? '', password: '', status: u.active ? 'activo' : 'inactivo', estadoId: u.estadoId != null ? String(u.estadoId) : '' })
     } else {
       setEditingUser(null)
-      setUserForm({ fullName: '', email: '', roleId: '', password: '', status: 'activo' })
+      setUserForm({ fullName: '', email: '', roleId: '', password: '', status: 'activo', estadoId: esAdminEstadal && currentUser?.estadoId ? String(currentUser.estadoId) : '' })
     }
     setShowUserForm(true)
   }
+
+  // Roles disponibles para elegir: solo el administrador nacional puede
+  // otorgar "Administrador" y "Admin Estadal".
+  const rolesVisibles = esSuperadmin
+    ? roles
+    : roles.filter(r => !['Administrador', 'Admin Estadal'].includes(r.ROLE_NOM || r.name))
 
   const handleSaveUser = async (e) => {
     e.preventDefault()
@@ -95,12 +88,19 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
     if (!userForm.roleId) { warn('Seleccione un rol para el usuario.'); return }
     if (!userForm.password && !editingUser) { warn('La contraseña es obligatoria.'); return }
     if (userForm.password && userForm.password.length < 8) { warn('La contraseña debe tener al menos 8 caracteres.'); return }
+    const nombreRolSeleccionado = (roles.find(r => String(r.ROLE_COD ?? r.id) === String(userForm.roleId))?.ROLE_NOM) || ''
+    if (nombreRolSeleccionado === 'Admin Estadal' && !userForm.estadoId) {
+      warn('Un «Admin Estadal» debe tener un estado asignado.')
+      return
+    }
     try {
       const payload = {
         nombre: userForm.fullName.trim(),
         email: userForm.email.trim().toLowerCase(),
         rolId: Number(userForm.roleId),
         activo: userForm.status === 'activo',
+        // Estado al que pertenece el usuario (vacío = nacional).
+        estadoId: userForm.estadoId ? Number(userForm.estadoId) : null,
       }
       if (userForm.password) payload.password = userForm.password
       if (editingUser) {
@@ -181,16 +181,25 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
                   <th className="table-th">Nombre / Usuario</th>
                   <th className="table-th">Email</th>
                   <th className="table-th">Rol</th>
+                  <th className="table-th">Alcance</th>
                   <th className="table-th">Estado</th>
                   <th className="table-th">Acciones</th>
                 </tr>
               </thead>
               <tbody>
+                {users.length === 0 && (
+                  <tr>
+                    <td className="table-td" colSpan={6} style={{ textAlign: 'center', padding: '30px 0', color: 'var(--color-text-light)' }}>
+                      Sin resultados: no hay usuarios que coincidan con los filtros actuales.
+                    </td>
+                  </tr>
+                )}
                 {users.map(u => (
                   <tr key={u.id}>
                     <td className="table-td" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{u.name}</td>
                     <td className="table-td">{u.email}</td>
                     <td className="table-td"><span className="role-badge">{u.roleName || 'N/A'}</span></td>
+                    <td className="table-td">{u.estadoName || 'Nacional'}</td>
                     <td className="table-td">
                       <span className={`user-status ${u.active ? 'activo' : 'inactivo'}`}>{u.active ? 'Activo' : 'Inactivo'}</span>
                     </td>
@@ -300,8 +309,23 @@ export default function ConfiguracionSistema({ regionId = null, regionName = 'Vi
                     <label>Rol *</label>
                     <select className="form-modal-select" value={userForm.roleId} onChange={e => setUserForm(p => ({ ...p, roleId: e.target.value }))} required>
                       <option value="">Seleccione un rol...</option>
-                      {roles.map(r => (
+                      {rolesVisibles.map(r => (
                         <option key={r.ROLE_COD ?? r.id} value={r.ROLE_COD ?? r.id ?? ''}>{r.ROLE_NOM || r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-modal-group flex-1">
+                    <label>Estado (alcance)</label>
+                    <select
+                      className="form-modal-select"
+                      value={esAdminEstadal && currentUser?.estadoId ? String(currentUser.estadoId) : userForm.estadoId}
+                      disabled={esAdminEstadal}
+                      onChange={e => setUserForm(p => ({ ...p, estadoId: e.target.value }))}
+                      title={esAdminEstadal ? 'Los usuarios que crees quedan en tu estado' : 'Vacío = ámbito nacional'}
+                    >
+                      <option value="">Nacional (todos los estados)</option>
+                      {estados.map(e => (
+                        <option key={e.ESTA_COD ?? e.id} value={String(e.ESTA_COD ?? e.id ?? '')}>{e.ESTA_NOM || e.name}</option>
                       ))}
                     </select>
                   </div>

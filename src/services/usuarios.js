@@ -8,6 +8,8 @@ function mapUsuario(u) {
     active: u.USUAR_AC,
     roleId: u.USUAR_RO,
     roleName: u.TM_ROLES?.ROLE_NOM,
+    estadoId: u.ESTA_COD ?? null,
+    estadoName: u.TM_ESTADO?.ESTA_NOM ?? null,
     paisName: u.TM_PAISE?.PAIS_NOM,
     createdAt: u.USUAR_FR,
     regiones: (u.TR_USU_REGI || []).map((r) => ({
