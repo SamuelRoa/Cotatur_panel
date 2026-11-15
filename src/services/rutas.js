@@ -10,6 +10,9 @@ function mapRuta(r) {
     roadStatus: r.RUTA_VIA,
     tourismTypeId: r.RUTA_TTU,
     tourismType: r.TM_TITUR?.TITU_NOM,
+    // Polilínea persistida (RUTA_GEO): trazado real por carretera guardado
+    // desde el diseñador. null si la ruta nunca se trazó.
+    geometry: Array.isArray(r.RUTA_GEO) && r.RUTA_GEO.length >= 2 ? r.RUTA_GEO : null,
     destinos: (r.TR_RUTDE || []).map((rd) => ({
       id: rd.RTDE_COD,
       destinoId: rd.RTDE_DES,

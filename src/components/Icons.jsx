@@ -86,7 +86,22 @@ export const IconCheck = (p) => (
 )
 
 /* --- Selector de categoría ---------------------------------------------- */
+// Claves por código del catálogo TM_TIPR (el backend manda PROV_TSE) y por
+// nombre de categoría legado.
 export const CATEGORY_ICONS = {
+  'hosped': IconHotel,
+  'rest': IconFood,
+  'transp': IconTransport,
+  'agencia': IconAgency,
+  'guia': IconGuide,
+  'parquet': IconEntertainment,
+  'zoolo': IconEntertainment,
+  'museo': IconOther,
+  'circo': IconEntertainment,
+  'pinfant': IconEntertainment,
+  'cineaire': IconEntertainment,
+  'entretenimiento': IconEntertainment,
+  'otro': IconOther,
   'Alojamiento Turístico': IconHotel,
   'Gastronomía Regional': IconFood,
   'Agencia de Viajes': IconAgency,
@@ -97,13 +112,18 @@ export const CATEGORY_ICONS = {
 }
 
 const GENERIC_BY_KEYWORD = [
+  ['hosped', IconHotel],
   ['alojamiento', IconHotel],
   ['hotel', IconHotel],
+  ['rest', IconFood],
   ['gastronom', IconFood],
-  ['restaurante', IconFood],
-  ['agencia', IconAgency],
+  ['transp', IconTransport],
   ['transporte', IconTransport],
+  ['agencia', IconAgency],
   ['guia', IconGuide],
+  ['parquet', IconEntertainment],
+  ['circo', IconEntertainment],
+  ['cine', IconEntertainment],
   ['entretenimiento', IconEntertainment],
 ]
 

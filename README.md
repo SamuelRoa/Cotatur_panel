@@ -1,18 +1,49 @@
-# React + Vite
+# Panel Administrativo — COTATUR / MINTUR
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Panel de control y gestión operativa para la fiscalización, trazado y administración turística de Venezuela.
+Desarrollado con **React 19**, **Vite** y **Leaflet**.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🏛️ Características Principales
 
-## React Compiler
+- **Identidad Institucional Dinámica (Multi-marca):**
+  - Adapta logos y colores institucionales automáticamente: muestra **COTATUR** para usuarios con cuenta `@cotatur.gob.ve`, y **MINTUR** para cuentas de alcance nacional.
+- **Control Territorial por Región / Estado:**
+  - Los coordinadores estadales y operadores solo gestionan entidades de su jurisdicción territorial asignada.
+- **Wizards Multi-Paso:**
+  - **DestinosCRUD:** Formulario por pasos (Datos generales $\to$ Ubicación GPS con mapa $\to$ Web y Opcionales).
+  - **RouteDesigner:** Diseñador secuencial de rutas turísticas (Datos de ruta $\to$ Paradas secuenciales con reordenamiento $\to$ Estimaciones y vista previa).
+  - **ValidationWizard:** Asistente de auditoría y fiscalización de recaudos para prestadores turísticos.
+- **Gestión en Tiempo Real:**
+  - `NotificationCenter` conectado por WebSockets (`Socket.IO`) que alerta al funcionario cuando un prestador se registra desde la web.
+- **Cartografía Avanzada:**
+  - `MapaControl` con soporte de capas de calor (Heatmaps), clustering de destinos y carga de polígonos GeoJSON de los 24 estados.
+- **Papelera y Gobernanza:**
+  - Módulo centralizado de papelera (`Papelera.jsx`) con restauración granular y soft delete.
+- **Temas:**
+  - Soporte completo de Modo Claro, Modo Oscuro y Automático según el sistema.
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+---
 
-Note: This will impact Vite dev & build performances.
+## 🛠️ Comandos de Desarrollo
 
-## Expanding the ESLint configuration
+```bash
+# Instalar dependencias
+npm install
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Iniciar servidor de desarrollo (puerto 8001)
+npm run dev
+
+# Iniciar en modo offline (puerto 8101)
+npm run dev:offline
+
+# Compilar para producción
+npm run build
+```
+
+---
+
+## 🌐 Conectividad
+- **Desarrollo:** `http://localhost:8001` conectando al backend en `http://localhost:8000/api`
+- **Modo Offline:** `http://localhost:8101` conectando al backend en `http://localhost:8100/api`

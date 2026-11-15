@@ -3,6 +3,7 @@ import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
 import { useFeedback } from './feedbackContext.js'
 import { normalizeGeoName } from '../lib/geoNames.js'
+import BusquedaSelect from './BusquedaSelect.jsx'
 import { IconCheck } from './Icons.jsx'
 
 const tourismTypes = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
@@ -42,6 +43,12 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
   // Wizard state
   const [step, setStep] = useState(1)
   const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [savingMun, setSavingMun] = useState(false)
+  // Marca de tiempo al entrar al paso 3: el botón "Guardar y Publicar" aparece
+  // donde estaba "Siguiente", y el segundo clic de un doble clic accidental
+  // terminaba creando el destino sin pasar por el paso 3.
+  const step3EnteredAtRef = useRef(0)
 
   const [regions, setRegions] = useState([])
   const [estados, setEstados] = useState([])
@@ -141,7 +148,9 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
 
   const handleNext = () => {
     if (validateStep(step)) {
-      setStep(s => Math.min(s + 1, 3))
+      const next = Math.min(step + 1, 3)
+      if (next === 3) step3EnteredAtRef.current = Date.now()
+      setStep(next)
     }
   }
 
@@ -152,6 +161,10 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
 
   const handleSave = async (e) => {
     if (e) e.preventDefault()
+    if (saving) return
+    // Ignora un envío dentro de los 500 ms posteriores a llegar al paso 3:
+    // es el segundo clic de un doble clic sobre "Siguiente", no un guardado real.
+    if (Date.now() - step3EnteredAtRef.current < 500) return
     if (!validateStep(1)) {
       setStep(1)
       toast.warning('Por favor completa el nombre del destino.')
@@ -164,6 +177,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
     }
 
     const munId = parseInt(form.municipioId)
+    setSaving(true)
     try {
       const payload = {
         nombre: form.name.trim(),
@@ -195,6 +209,8 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
     } catch (err) {
       const message = err.message || 'No se pudo guardar el destino. Intenta de nuevo.'
       toast.error(message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -222,6 +238,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
   const filteredMunicipios = municipios.filter(m => !form.estadoId || m.MUNI_EST === parseInt(form.estadoId))
 
   const handleCreateMunicipio = async () => {
+    if (savingMun) return
     const name = newMunName.replace(/\s+/g, ' ').trim()
     if (!form.estadoId) {
       toast.warning('Seleccione primero el estado para agregar un municipio.')
@@ -237,6 +254,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
       setNewMunError(`Ya existe «${dup.MUNI_NOM}» en este estado (no se permite repetir aunque cambien mayúsculas o acentos).`)
       return
     }
+    setSavingMun(true)
     try {
       const res = await geoService.createMunicipio({ nombre: name, estadoId: parseInt(form.estadoId) })
       const mun = res?.data || res
@@ -248,6 +266,8 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
       toast.success(`El municipio «${mun.MUNI_NOM}» fue creado y seleccionado.`, { title: 'Municipio agregado' })
     } catch (err) {
       setNewMunError(err.message || 'No se pudo crear el municipio.')
+    } finally {
+      setSavingMun(false)
     }
   }
 
@@ -358,7 +378,15 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
               </div>
             </div>
 
-            <form onSubmit={handleSave}>
+            <form
+              onSubmit={handleSave}
+              onKeyDown={(e) => {
+                // Evita el envío implícito del formulario con Enter (p. ej. al
+                // pegar la URL de imagen en el paso 3). El textarea mantiene su
+                // salto de línea y los botones siguen funcionando por clic.
+                if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault()
+              }}
+            >
               <div className="modal-body wizard-body">
                 {step === 1 && (
                   <div className="wizard-step-content">
@@ -460,18 +488,18 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
 
                     <div className="form-modal-group">
                       <label>Municipio <span className="required-star">*</span></label>
-                      <select
+                      <BusquedaSelect
                         className={`form-modal-select ${errors.municipioId ? 'input-error' : ''}`}
+                        ariaLabel="Municipio"
                         value={form.municipioId}
-                        onChange={e => {
-                          setForm(p => ({ ...p, municipioId: e.target.value }))
+                        onChange={(v) => {
+                          setForm(p => ({ ...p, municipioId: String(v) }))
                           setErrors(p => ({ ...p, municipioId: '' }))
                         }}
+                        options={filteredMunicipios.map(m => ({ value: m.MUNI_COD, label: m.MUNI_NOM }))}
+                        placeholder={form.estadoId ? 'Escribe para buscar municipio…' : 'Primero elija estado'}
                         disabled={!form.estadoId}
-                      >
-                        <option value="">{form.estadoId ? 'Seleccione municipio…' : 'Primero elija estado'}</option>
-                        {filteredMunicipios.map(m => <option key={m.MUNI_COD} value={m.MUNI_COD}>{m.MUNI_NOM}</option>)}
-                      </select>
+                      />
                       {errors.municipioId && <span className="field-error">{errors.municipioId}</span>}
 
                       <button
@@ -498,7 +526,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
                             placeholder="Nombre del nuevo municipio"
                             autoFocus
                           />
-                          <button type="button" className="btn-modal-action approve" onClick={handleCreateMunicipio}>Agregar</button>
+                          <button type="button" className="btn-modal-action approve" onClick={handleCreateMunicipio} disabled={savingMun}>{savingMun ? 'Agregando…' : 'Agregar'}</button>
                         </div>
                       )}
                       {newMunError && (
@@ -625,8 +653,8 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
                     Siguiente →
                   </button>
                 ) : (
-                  <button type="submit" className="btn-modal-action approve">
-                    {editing ? 'Actualizar Destino' : 'Guardar y Publicar'}
+                  <button type="submit" className="btn-modal-action approve" disabled={saving}>
+                    {saving ? 'Guardando…' : (editing ? 'Actualizar Destino' : 'Guardar y Publicar')}
                   </button>
                 )}
                 <button type="button" className="btn-modal-action cancel" onClick={() => setShowForm(false)}>

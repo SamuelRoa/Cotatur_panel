@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 
-const CACHE_PREFIX = 'osrm_geo_'
+import api from '../services/api'
+
+const CACHE_PREFIX = 'ruta_geo_'
 const MAX_TRACED = 12
 
 export function lightenHex(hex, amount = 0.4) {
@@ -18,14 +20,15 @@ function waypointsKey(path) {
   return path.map(([lat, lng]) => `${lng.toFixed(4)},${lat.toFixed(4)}`).join(';')
 }
 
+// Trazado vía el proxy del backend (que llama a OSRM y, sin conexión,
+// devuelve línea recta). El cliente nunca dependerá del servicio externo.
 async function fetchOSRM(path, signal) {
-  const coords = path.map(([lat, lng]) => `${lng},${lat}`).join(';')
-  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?geometries=geojson&overview=full&alternatives=false`
-  const res = await fetch(url, { signal })
-  if (!res.ok) throw new Error(`OSRM error ${res.status}`)
-  const data = await res.json()
-  if (!data.routes?.[0]?.geometry?.coordinates) throw new Error('OSRM: sin ruta')
-  return data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng])
+  const res = await api.post('/geo/route', {
+    waypoints: path.map(([lat, lng]) => [lat, lng]),
+  }, { signal })
+  const data = res.data || res
+  if (!data?.geometria?.length) throw new Error('Sin ruta')
+  return data.geometria
 }
 
 /**

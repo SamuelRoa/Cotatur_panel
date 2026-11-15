@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react'
 import { geoService } from '../services/geo'
+import { prestadoresService } from '../services/prestadores'
 import { prestadorPaso1Schema, prestadorPaso2Schema, zodErrors } from '../schemas/entidades'
 import { IconArrowLeft, IconArrowRight, IconCheck } from './Icons.jsx'
 import { useFeedback } from './feedbackContext.js'
 import { normalizeGeoName } from '../lib/geoNames.js'
 
-const CATEGORIES = [
-  { value: 'Alojamiento Turístico', label: 'Alojamiento Turístico' },
-  { value: 'Gastronomía Regional', label: 'Gastronomía Regional' },
-  { value: 'Agencia de Viajes', label: 'Agencia de Viajes' },
-  { value: 'Agencia de Turismo', label: 'Agencia de Turismo' },
-  { value: 'Transporte Turístico', label: 'Transporte Turístico' },
-  { value: 'Guía de Turismo', label: 'Guía de Turismo' },
-  { value: 'Entretenimiento', label: 'Entretenimiento' },
-  { value: 'Otro', label: 'Otro' },
+// Respaldo si la API no responde; coincide con la semilla de tm_tipr.
+const CATEGORIES_FALLBACK = [
+  { TIPR_CODV: 'hosped', TIPR_NOM: 'Hospedaje' },
+  { TIPR_CODV: 'rest', TIPR_NOM: 'Restaurante' },
+  { TIPR_CODV: 'transp', TIPR_NOM: 'Transporte Turístico' },
+  { TIPR_CODV: 'agencia', TIPR_NOM: 'Agencia de Viajes' },
+  { TIPR_CODV: 'guia', TIPR_NOM: 'Guía de Turismo' },
+  { TIPR_CODV: 'parquet', TIPR_NOM: 'Parque Temático' },
+  { TIPR_CODV: 'zoolo', TIPR_NOM: 'Zoológico Interactivo' },
+  { TIPR_CODV: 'museo', TIPR_NOM: 'Museo' },
+  { TIPR_CODV: 'otro', TIPR_NOM: 'Otro' },
 ]
 
 const SERVICES = [
@@ -56,6 +59,7 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
   const [newMunError, setNewMunError] = useState('')
   const [estados, setEstados] = useState([])
   const [municipios, setMunicipios] = useState([])
+  const [tipos, setTipos] = useState(CATEGORIES_FALLBACK)
 
   useEffect(() => {
     if (!isOpen) return
@@ -70,6 +74,15 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
       setMunicipios(munRes.data || munRes || [])
     }).catch(() => {})
   }, [isOpen, ctxRegionId])
+
+  // Catálogo de tipos de prestador desde la API.
+  useEffect(() => {
+    if (!isOpen) return
+    prestadoresService
+      .getTipos()
+      .then((lista) => { if (Array.isArray(lista) && lista.length) setTipos(lista) })
+      .catch(() => {})
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -136,6 +149,8 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
     if (validateStep()) {
       onSubmit({
         ...data,
+        // El backend espera códigos de día en mayúsculas (LUN, MAR, ...).
+        openDays: data.openDays.map(d => d.toUpperCase()),
         id: Date.now(),
         date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }),
         status: 'pendiente',
@@ -228,10 +243,10 @@ export default function ValidationWizard({ isOpen, onClose, onSubmit, regionId: 
                   {errors.name && <span className="field-error">{errors.name}</span>}
                 </div>
                 <div className="form-modal-group">
-                  <label>Categoría *</label>
+                  <label>Tipo de Prestador *</label>
                   <select className={`form-modal-select ${errors.category ? 'input-error' : ''}`} value={data.category} onChange={set('category')}>
                     <option value="">Seleccione...</option>
-                    {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    {tipos.map(t => <option key={t.TIPR_CODV} value={t.TIPR_CODV}>{t.TIPR_NOM}</option>)}
                   </select>
                   {errors.category && <span className="field-error">{errors.category}</span>}
                 </div>

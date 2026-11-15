@@ -2,11 +2,24 @@ import { useState, useEffect, useRef } from 'react'
 import { rutasService } from '../services/rutas'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
+import { routingService } from '../services/routing'
 import { useFeedback } from './feedbackContext.js'
+import BusquedaSelect from './BusquedaSelect.jsx'
+import RouteMapEditor from './RouteMapEditor.jsx'
 import { IconCheck } from './Icons.jsx'
 
-const tourismTypes = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
+const tourismTypesFallback = ['Ecoturismo', 'Sol y Playa', 'Aventura', 'Cultural', 'Gastronómico', 'Religioso']
 const roadStatuses = ['Buena', 'Regular', 'Mala']
+
+const emptyNewDest = () => ({
+  name: '',
+  description: '',
+  tourismTypeId: '',
+  municipalityId: '',
+  lat: '',
+  lng: '',
+  roadStatus: 'Buena',
+})
 
 export default function RouteDesigner({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
@@ -24,6 +37,11 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
 
   // Wizard & Form states
   const [step, setStep] = useState(1)
+  const [saving, setSaving] = useState(false)
+  // Marca de tiempo al entrar al paso 3: el botón "Guardar Ruta" aparece donde
+  // estaba "Siguiente"; el segundo clic de un doble clic accidental terminaba
+  // guardando la ruta sin pasar por el paso 3.
+  const step3EnteredAtRef = useRef(0)
   const [errors, setErrors] = useState({})
   const [destSearch, setDestSearch] = useState('')
   const [destRegionFilter, setDestRegionFilter] = useState('')
@@ -36,13 +54,31 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
     duration: '',
     distance: '',
     destinations: [], // array of destination IDs in order
+    geometria: [], // polilínea trazada por OSRM (RUTA_GEO)
   })
+  const [trazando, setTrazando] = useState(false)
+  const [trazoInfo, setTrazoInfo] = useState(null)
 
   const [regions, setRegions] = useState([])
+
+  // Datos para crear destinos inline desde la ruta
+  const [showNewDest, setShowNewDest] = useState(false)
+  const [savingDest, setSavingDest] = useState(false)
+  const [tiposTurismo, setTiposTurismo] = useState([])
+  const [municipios, setMunicipios] = useState([])
+  const [newDest, setNewDest] = useState(emptyNewDest())
+  const [newDestErrors, setNewDestErrors] = useState({})
 
   useEffect(() => {
     geoService.getRegiones().then((res) => {
       setRegions(res.data || res || [])
+    }).catch(() => {})
+    // Tipos y municipios reales de la BD para el formulario de destino inline
+    geoService.getTiposTurismo().then((res) => {
+      setTiposTurismo(res.data || res || [])
+    }).catch(() => {})
+    geoService.getMunicipios().then((res) => {
+      setMunicipios(res.data || res || [])
     }).catch(() => {})
   }, [])
 
@@ -98,6 +134,7 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
         duration: String(route.durationHours || ''),
         distance: String(route.distanceKm || ''),
         destinations: (route.destinos || []).map(d => d.destinoId),
+        geometria: route.geometry ?? [],
       })
     } else {
       setEditing(null)
@@ -109,8 +146,11 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
         duration: '',
         distance: '',
         destinations: [],
+        geometria: [],
       })
     }
+    setTrazoInfo(null)
+    setTrazando(false)
     setShowForm(true)
   }
 
@@ -128,7 +168,9 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
 
   const handleNext = () => {
     if (validateStep(step)) {
-      setStep(s => Math.min(s + 1, 3))
+      const next = Math.min(step + 1, 3)
+      if (next === 3) step3EnteredAtRef.current = Date.now()
+      setStep(next)
     }
   }
 
@@ -148,6 +190,53 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
     setForm(p => ({ ...p, destinations: p.destinations.filter(id => id !== destId) }))
   }
 
+  // Clic en un marcador del mapa: agrega o quita la parada.
+  const toggleParadaDesdeMapa = (dest) => {
+    if (form.destinations.includes(dest.id)) removeDestination(dest.id)
+    else addDestination(dest.id)
+  }
+
+  // Clic en el mapa vacío: abre el formulario inline con las coordenadas
+  // del punto elegido ya prefijadas.
+  const prefillNuevoDestino = ({ lat, lng }) => {
+    setNewDest(p => ({ ...p, lat: lat.toFixed(5), lng: lng.toFixed(5) }))
+    setShowNewDest(true)
+  }
+
+  // Trazado real por carretera vía el proxy del backend (OSRM): llena
+  // automáticamente duración/distancia y guarda la polilínea (RUTA_GEO).
+  const handleTrazar = async () => {
+    const paradas = form.destinations
+      .map(id => getDest(id))
+      .filter(Boolean)
+      .map(d => [Number(d.lat), Number(d.lng)])
+      .filter(([la, lo]) => Number.isFinite(la) && Number.isFinite(lo) && la !== 0 && lo !== 0)
+    if (paradas.length < 2) {
+      toast.warning('Agrega al menos 2 paradas con coordenadas para trazar la ruta por carretera.')
+      return
+    }
+    setTrazando(true)
+    try {
+      const res = await routingService.trazar(paradas)
+      setForm(p => ({
+        ...p,
+        geometria: res.geometria,
+        duration: String(Math.max(1, Math.round(res.duracionHoras))),
+        distance: String(res.distanciaKm),
+      }))
+      setTrazoInfo(res)
+      toast.success(
+        `Trazado: ${res.distanciaKm} km · ~${Math.round(res.duracionHoras)} h` +
+          (res.fuente === 'recta' ? ' (sin conexión: línea recta)' : ' (por carretera)'),
+        { title: 'Ruta trazada' },
+      )
+    } catch (err) {
+      toast.error('No se pudo trazar la ruta: ' + (err.message || 'error desconocido'))
+    } finally {
+      setTrazando(false)
+    }
+  }
+
   const moveDestination = (index, direction) => {
     const newIdx = index + direction
     if (newIdx < 0 || newIdx >= form.destinations.length) return
@@ -159,6 +248,10 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
 
   const handleSave = async (e) => {
     if (e) e.preventDefault()
+    if (saving) return
+    // Ignora un envío dentro de los 500 ms posteriores a llegar al paso 3:
+    // es el segundo clic de un doble clic sobre "Siguiente", no un guardado real.
+    if (Date.now() - step3EnteredAtRef.current < 500) return
     if (!validateStep(1)) {
       setStep(1)
       toast.warning('Por favor ingresa el nombre de la ruta.')
@@ -170,6 +263,7 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
       return
     }
 
+    setSaving(true)
     try {
       const destinosPayload = form.destinations.map((destinoId, i) => ({
         destinoId,
@@ -179,10 +273,15 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
         nombre: form.name.trim(),
         descripcion: form.description?.trim() || undefined,
         vialidad: form.roadStatus,
-        tipoTurismoId: tourismTypes.indexOf(form.tourismType) + 1,
+        tipoTurismoId:
+          tiposTurismo.find(t => t.TITU_NOM === form.tourismType)?.TITU_COD ||
+          tourismTypesFallback.indexOf(form.tourismType) + 1,
         duracionHoras: form.duration ? parseInt(form.duration) : undefined,
         distanciaKm: form.distance ? parseFloat(form.distance) : undefined,
         destinos: destinosPayload,
+        // Polilínea trazada: se persiste en RUTA_GEO para render instantáneo
+        // y modo offline.
+        ...(form.geometria?.length >= 2 ? { geometria: form.geometria } : {}),
       }
       if (editing) {
         await rutasService.update(editing, payload)
@@ -200,6 +299,57 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
       setEditing(null)
     } catch (err) {
       toast.error('No se pudo guardar la ruta: ' + (err.message || 'error desconocido'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /**
+   * Crea un destino real (no ad-hoc) directamente desde el diseñador de rutas.
+   * Debe existir como registro del catálogo para que páginas de detalle,
+   * opiniones, eventos y prestadores puedan vincularse a él.
+   */
+  const handleCreateDestinoDesdeRuta = async () => {
+    const errs = {}
+    if (!newDest.name.trim()) errs.name = 'El nombre es obligatorio.'
+    if (!newDest.tourismTypeId) errs.tourismTypeId = 'Seleccione el tipo de turismo.'
+    if (!newDest.municipalityId) errs.municipalityId = 'Seleccione el municipio.'
+    if (!newDest.lat || isNaN(parseFloat(newDest.lat))) errs.lat = 'Latitud requerida (ej. 7.8939).'
+    if (!newDest.lng || isNaN(parseFloat(newDest.lng))) errs.lng = 'Longitud requerida (ej. -67.4711).'
+    setNewDestErrors(errs)
+    if (Object.keys(errs).length > 0) return
+
+    setSavingDest(true)
+    try {
+      const res = await destinosService.create({
+        nombre: newDest.name.trim(),
+        descripcion: newDest.description.trim() || undefined,
+        vialidad: newDest.roadStatus,
+        tipoTurismoId: parseInt(newDest.tourismTypeId),
+        municipioId: parseInt(newDest.municipalityId),
+        lat: parseFloat(newDest.lat),
+        lon: parseFloat(newDest.lng),
+      })
+      // success() devuelve { data: { destino } } o el destino directo según el wrapper
+      const raw = res?.data?.data ?? res?.data ?? res
+      const newId = raw?.DEST_COD ?? raw?.id
+      setForm(p => ({
+        ...p,
+        destinations: (newId && !p.destinations.includes(newId))
+          ? [...p.destinations, newId]
+          : p.destinations,
+      }))
+      toast.success(`El destino «${newDest.name.trim()}» fue creado y agregado como parada.`, {
+        title: 'Destino creado',
+      })
+      setNewDest(emptyNewDest())
+      setNewDestErrors({})
+      setShowNewDest(false)
+      loadData() // refresca la lista de destinos disponibles
+    } catch (err) {
+      toast.error('No se pudo crear el destino: ' + (err.message || 'error desconocido'))
+    } finally {
+      setSavingDest(false)
     }
   }
 
@@ -352,7 +502,14 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
               </div>
             </div>
 
-            <form onSubmit={handleSave}>
+            <form
+              onSubmit={handleSave}
+              onKeyDown={(e) => {
+                // Evita el envío implícito del formulario con Enter (igual que
+                // en el wizard de destinos). El textarea conserva su salto.
+                if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault()
+              }}
+            >
               <div className="modal-body wizard-body">
                 {step === 1 && (
                   <div className="wizard-step-content">
@@ -383,7 +540,9 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
                           value={form.tourismType}
                           onChange={e => setForm(p => ({ ...p, tourismType: e.target.value }))}
                         >
-                          {tourismTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                          {(tiposTurismo.length ? tiposTurismo.map(t => t.TITU_NOM) : tourismTypesFallback).map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
                         </select>
                       </div>
 
@@ -416,8 +575,40 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
                   <div className="wizard-step-content">
                     <h4 className="wizard-step-title">Itinerario de Paradas</h4>
                     <p className="wizard-step-desc">
-                      Selecciona los destinos turísticos y ordénalos en la secuencia de la ruta.
+                      Selecciona los destinos turísticos y ordénalos en la secuencia de la ruta. En el
+                      mapa: clic en un marcador agrega o quita la parada; clic en el mapa vacío crea un
+                      destino nuevo con esas coordenadas.
                     </p>
+
+                    {/* Mapa geográfico del itinerario */}
+                    <div style={{ marginBottom: 14 }}>
+                      <RouteMapEditor
+                        destinos={availableDestinations}
+                        seleccionados={form.destinations.map(id => ({ destinoId: id, ...(getDest(id) || {}) }))}
+                        geometria={form.geometria}
+                        trazando={trazando}
+                        onToggleParada={toggleParadaDesdeMapa}
+                        onMapClick={prefillNuevoDestino}
+                        altura="300px"
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                        <button
+                          type="button"
+                          className="btn-modal-action approve"
+                          disabled={trazando || form.destinations.length < 2}
+                          onClick={handleTrazar}
+                          style={{ opacity: form.destinations.length < 2 ? 0.5 : 1 }}
+                        >
+                          {trazando ? 'Trazando…' : '⟐ Trazar ruta real por carretera'}
+                        </button>
+                        {trazoInfo && (
+                          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                            {trazoInfo.distanciaKm} km · ~{Math.round(trazoInfo.duracionHoras)} h
+                            {trazoInfo.fuente === 'recta' ? ' (aprox.)' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
                     {/* Sequential Stops List */}
                     <div className="form-modal-group">
@@ -521,7 +712,146 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
 
                     {/* Candidate destinations selector */}
                     <div className="form-modal-group" style={{ marginTop: 14 }}>
-                      <label>Agregar Destinos Disponibles</label>
+                      <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Agregar Destinos Disponibles</span>
+                        <button
+                          type="button"
+                          onClick={() => { setShowNewDest(v => !v); setNewDestErrors({}) }}
+                          style={{
+                            background: showNewDest ? 'none' : 'var(--color-primary-solid)',
+                            color: showNewDest ? 'var(--color-primary)' : '#fff',
+                            border: showNewDest ? '1px solid var(--color-primary)' : 'none',
+                            borderRadius: 8,
+                            padding: '5px 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {showNewDest ? '✕ Cancelar destino' : '＋ Crear destino'}
+                        </button>
+                      </label>
+
+                      {showNewDest && (
+                        <div style={{
+                          border: '1px solid var(--color-input-border)',
+                          borderRadius: 10,
+                          padding: 12,
+                          marginBottom: 10,
+                          background: 'var(--color-card-bg)',
+                        }}>
+                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 8 }}>
+                            El destino se guarda en el catálogo general y queda como parada de esta ruta.
+                          </div>
+                          <div className="wizard-form-grid two-col">
+                            <div className="form-modal-group">
+                              <label>Nombre <span className="required-star">*</span></label>
+                              <input
+                                type="text"
+                                className="form-modal-input"
+                                placeholder="Ej. Toma de Santa Bárbara"
+                                value={newDest.name}
+                                onChange={e => setNewDest(p => ({ ...p, name: e.target.value }))}
+                              />
+                              {newDestErrors.name && <span className="field-error">{newDestErrors.name}</span>}
+                            </div>
+
+                            <div className="form-modal-group">
+                              <label>Tipo de turismo <span className="required-star">*</span></label>
+                              <select
+                                className="form-modal-select"
+                                value={newDest.tourismTypeId}
+                                onChange={e => setNewDest(p => ({ ...p, tourismTypeId: e.target.value }))}
+                              >
+                                <option value="">Seleccione tipo…</option>
+                                {tiposTurismo.map(t => (
+                                  <option key={t.TITU_COD} value={t.TITU_COD}>{t.TITU_NOM}</option>
+                                ))}
+                              </select>
+                              {newDestErrors.tourismTypeId && <span className="field-error">{newDestErrors.tourismTypeId}</span>}
+                            </div>
+
+                            <div className="form-modal-group" style={{ gridColumn: '1 / -1' }}>
+                              <label>Municipio <span className="required-star">*</span></label>
+                              <BusquedaSelect
+                                value={newDest.municipalityId}
+                                onChange={v => setNewDest(p => ({ ...p, municipalityId: String(v) }))}
+                                options={municipios.map(m => ({
+                                  value: m.MUNI_COD,
+                                  label: `${m.MUNI_NOM} — ${m.TM_ESTADO?.ESTA_NOM ?? ''}`,
+                                }))}
+                                placeholder="Escribe para buscar municipio…"
+                                ariaLabel="Municipio del destino"
+                              />
+                              {newDestErrors.municipalityId && <span className="field-error">{newDestErrors.municipalityId}</span>}
+                            </div>
+
+                            <div className="form-modal-group">
+                              <label>Latitud <span className="required-star">*</span></label>
+                              <input
+                                type="text"
+                                className="form-modal-input"
+                                placeholder="Ej. 7.8939"
+                                value={newDest.lat}
+                                onChange={e => setNewDest(p => ({ ...p, lat: e.target.value }))}
+                              />
+                              {newDestErrors.lat && <span className="field-error">{newDestErrors.lat}</span>}
+                            </div>
+
+                            <div className="form-modal-group">
+                              <label>Longitud <span className="required-star">*</span></label>
+                              <input
+                                type="text"
+                                className="form-modal-input"
+                                placeholder="Ej. -67.4711"
+                                value={newDest.lng}
+                                onChange={e => setNewDest(p => ({ ...p, lng: e.target.value }))}
+                              />
+                              {newDestErrors.lng && <span className="field-error">{newDestErrors.lng}</span>}
+                            </div>
+
+                            <div className="form-modal-group" style={{ gridColumn: '1 / -1' }}>
+                              <label>Descripción</label>
+                              <textarea
+                                rows={2}
+                                className="form-modal-input"
+                                placeholder="¿Qué ofrece este destino a los visitantes?"
+                                value={newDest.description}
+                                onChange={e => setNewDest(p => ({ ...p, description: e.target.value }))}
+                              />
+                            </div>
+
+                            <div className="form-modal-group">
+                              <label>Vialidad</label>
+                              <select
+                                className="form-modal-select"
+                                value={newDest.roadStatus}
+                                onChange={e => setNewDest(p => ({ ...p, roadStatus: e.target.value }))}
+                              >
+                                {roadStatuses.map(r => <option key={r} value={r}>{r}</option>)}
+                              </select>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                              <button
+                                type="button"
+                                className="btn-modal-action approve"
+                                disabled={savingDest}
+                                onClick={handleCreateDestinoDesdeRuta}
+                              >
+                                {savingDest ? 'Guardando…' : 'Crear destino'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-modal-action"
+                                onClick={() => setShowNewDest(false)}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="wizard-form-grid two-col" style={{ marginBottom: 8 }}>
                         <input
                           type="text"
@@ -553,7 +883,9 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
                       }}>
                         {filteredCandidateDestinations.length === 0 ? (
                           <span style={{ fontSize: 12, color: 'var(--color-text-light)', padding: 6 }}>
-                            No hay más destinos que coincidan con la búsqueda.
+                            {availableDestinations.length === 0
+                              ? 'Aún no hay destinos en el catálogo. Usa el botón ＋ Crear destino para agregar el primero desde aquí.'
+                              : 'No hay más destinos que coincidan con la búsqueda.'}
                           </span>
                         ) : (
                           filteredCandidateDestinations.map(d => (
@@ -673,8 +1005,8 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
                     Siguiente →
                   </button>
                 ) : (
-                  <button type="submit" className="btn-modal-action approve">
-                    {editing ? 'Actualizar Ruta' : 'Guardar y Publicar Ruta'}
+                  <button type="submit" className="btn-modal-action approve" disabled={saving}>
+                    {saving ? 'Guardando…' : (editing ? 'Actualizar Ruta' : 'Guardar y Publicar Ruta')}
                   </button>
                 )}
                 <button type="button" className="btn-modal-action cancel" onClick={() => setShowForm(false)}>

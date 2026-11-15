@@ -290,13 +290,8 @@ function App() {
   }
 
   const handleWizardSubmit = async (merchantData) => {
-    const tipoMap = {
-      'Alojamiento Turístico': 'hosped',
-      'Gastronomía Regional': 'rest',
-      'Agencia de Viajes': 'agencia',
-      'Transporte Turístico': 'transp',
-      'Guía de Turismo': 'guia',
-    }
+    // merchantData.category ya es el código del catálogo TM_TIPR (ej. 'hosped')
+    // que el wizard toma del select de tipos.
     // municipioId es obligatorio en el backend (PROV_MUN no admite nulos).
     // Sin esta validación el alta fallaba con 422 sin mensaje claro.
     const municipioId = parseInt(merchantData.municipioId, 10)
@@ -309,9 +304,18 @@ function App() {
 
     let payload = {
       nombre: merchantData.name,
-      tipo: tipoMap[merchantData.category] || merchantData.category,
+      tipo: merchantData.category,
       rif: merchantData.rif,
       municipioId,
+      descripcion: merchantData.description || undefined,
+      horaApertura: merchantData.openTime || undefined,
+      horaCierre: merchantData.closeTime || undefined,
+      diasAtencion: Array.isArray(merchantData.openDays) ? merchantData.openDays : undefined,
+      sedes: merchantData.branches ? parseInt(merchantData.branches, 10) || undefined : undefined,
+      capacidad: merchantData.capacity ? parseInt(merchantData.capacity, 10) || undefined : undefined,
+      servicios: Array.isArray(merchantData.services) && merchantData.services.length
+        ? merchantData.services
+        : undefined,
     }
     if (merchantData.email) payload.email = merchantData.email
     if (merchantData.phone) payload.telefono = merchantData.phone
@@ -377,10 +381,10 @@ function App() {
       blank()
       hr()
 
-      subtitle('2. Proveedores por Categor\u00eda')
+      subtitle('2. Prestadores por Categor\u00eda')
       const catEntries = Object.entries(categoryCounts)
       if (catEntries.length === 0) {
-        line('No hay proveedores registrados.')
+        line('No hay prestadores registrados.')
       } else {
         for (const [cat, count] of catEntries) {
           line(`${catLabels[cat] || cat}: ${count}`)
@@ -485,7 +489,13 @@ function App() {
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1
   }
   const maxCatCount = Math.max(...Object.values(categoryCounts), 1)
+  // Claves por código del catálogo TM_TIPR (PROV_TSE) + nombres legado.
   const catColors = {
+    hosped: 'green',
+    rest: 'blue',
+    agencia: 'orange',
+    transp: 'teal',
+    guia: 'purple',
     'Alojamiento Turístico': 'green',
     'Gastronomía Regional': 'blue',
     'Agencia de Viajes': 'orange',
@@ -494,6 +504,19 @@ function App() {
     'Otros': 'gray',
   }
   const catLabels = {
+    hosped: 'Alojamiento',
+    rest: 'Gastronomía',
+    agencia: 'Agencias',
+    transp: 'Transporte',
+    guia: 'Guías',
+    parquet: 'Parques Temáticos',
+    zoolo: 'Zoológicos',
+    circo: 'Circos',
+    pinfant: 'Parques Infantiles',
+    museo: 'Museos',
+    cineaire: 'Cine al Aire Libre',
+    entretenimiento: 'Entretenimiento',
+    otro: 'Otros',
     'Alojamiento Turístico': 'Alojamiento',
     'Gastronomía Regional': 'Gastronomía',
     'Agencia de Viajes': 'Agencias',
@@ -768,7 +791,7 @@ function App() {
                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                   <polyline points="9 22 9 12 15 12 15 22" />
                 </svg>
-                <span>Proveedores</span>
+                <span>Prestadores</span>
               </button>
               <button 
                 className={`sidebar-nav-item ${activeNav === 'eventos' ? 'active' : ''}`}
@@ -999,15 +1022,15 @@ function App() {
                         <div className="metric-card"><div className="metric-data"><span className="metric-title">Rutas Turísticas</span><span className="metric-value">{totalRutasCount}</span><span className="metric-trend orange">⟐ {Object.keys(rutasByRegion).length} regiones</span></div><div className="metric-icon-box orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg></div></div>
                       </section>
                       <section className="charts-section">
-                        <div className="chart-card" style={{cursor:'pointer'}} onClick={() => setActiveNav('proveedores')} onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `Ver proveedores por categoría` }) }} onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
-                          <h4 className="chart-title">Proveedores por Categoría</h4>
+                        <div className="chart-card" style={{cursor:'pointer'}} onClick={() => setActiveNav('proveedores')} onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `Ver prestadores por categoría` }) }} onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
+                          <h4 className="chart-title">Prestadores por Categoría</h4>
                           <div className="chart-bars">
                             {Object.entries(categoryCounts).length === 0 ? (
                               <div className="chart-bar-item"><span className="chart-bar-label">Sin datos</span></div>
                             ) : (
                               Object.entries(categoryCounts).map(([cat, count]) => (
                                 <div key={cat} className="chart-bar-item"
-                                  onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `${catLabels[cat] || cat}: ${count} proveedores` }) }}
+                                  onMouseMove={(e) => { setTooltip({ visible: true, x: e.clientX, y: e.clientY, content: `${catLabels[cat] || cat}: ${count} prestadores` }) }}
                                   onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}>
                                   <span className="chart-bar-label">{catLabels[cat] || cat}</span>
                                   <div className="chart-bar-track">
@@ -1089,7 +1112,7 @@ function App() {
                         </div>
                       </section>
                       <section className="table-section">
-                        <div className="table-section-header"><div className="table-header-title"><h4>Solicitudes de Proveedores</h4><p>Registros más recientes de prestadores turísticos.</p></div><div className="table-header-controls">
+                        <div className="table-section-header"><div className="table-header-title"><h4>Solicitudes de Prestadores</h4><p>Registros más recientes de prestadores turísticos.</p></div><div className="table-header-controls">
                           <div className="table-search-wrapper">
                             <svg className="table-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                             <input type="text" className="table-search-input" placeholder="Buscar por nombre, RIF o categoría..." value={tableSearch} onChange={e => { setTableSearch(e.target.value); setTablePage(1) }} />
@@ -1099,7 +1122,7 @@ function App() {
                           {tableLoading ? (<tr><td colSpan="5" className="table-td" style={{textAlign:'center',color:'var(--color-text-light)'}}>Cargando...</td></tr>) : tableMerchants.length === 0 ? (<tr><td colSpan="5" className="table-td" style={{textAlign:'center',color:'var(--color-text-light)'}}>No se encontraron registros.</td></tr>) : (
                             tableMerchants.map((merchant) => (
                               <tr key={merchant.id}>
-                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb"><CategoryIcon category={merchant.category} size={19} /></div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
+                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb"><CategoryIcon category={merchant.category} size={19} /></div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{catLabels[merchant.category] || merchant.category}</span></div></div></td>
                                 <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
                                 <td className="table-td">{merchant.date || '—'}</td>
                                 <td className="table-td"><span className={'badge-status ' + (merchant.status || 'pendiente').toLowerCase()}>{(merchant.status || 'pendiente').toUpperCase()}</span></td>
@@ -1165,7 +1188,7 @@ function App() {
                           <div className="table-responsive"><table className="dashboard-table"><thead><tr><th className="table-th">Nombre del Comercio</th><th className="table-th">RIF</th><th className="table-th">Fecha</th><th className="table-th">Estado</th><th className="table-th">Acciones</th></tr></thead><tbody>
                             {pendingMerchantsList.map((merchant) => (
                               <tr key={merchant.id}>
-                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb"><CategoryIcon category={merchant.category} size={19} /></div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{merchant.category}</span></div></div></td>
+                                <td className="table-td"><div className="merchant-info-block"><div className="merchant-avatar-thumb"><CategoryIcon category={merchant.category} size={19} /></div><div className="merchant-text-block"><h5 className="merchant-title-name">{merchant.name}</h5><span className="merchant-subtitle-category">{catLabels[merchant.category] || merchant.category}</span></div></div></td>
                                 <td className="table-td" style={{fontFamily:'monospace',fontWeight:'500'}}>{merchant.rif || '—'}</td>
                                 <td className="table-td">{merchant.date || '—'}</td>
                                 <td className="table-td"><span className={'badge-status ' + (merchant.status || 'pendiente').toLowerCase()}>{(merchant.status || 'pendiente').toUpperCase()}</span></td>

@@ -14,6 +14,7 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
   const [filterRegion, setFilterRegion] = useState(regionId || '')
   const [detail, setDetail] = useState(null)
   const [regions, setRegions] = useState([])
+  const [tipos, setTipos] = useState([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
@@ -24,13 +25,20 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
     }).catch(() => {})
   }, [])
 
+  // Catálogo de tipos para el filtro (mismo catálogo que el wizard).
+  useEffect(() => {
+    prestadoresService.getTipos().then((lista) => {
+      if (Array.isArray(lista)) setTipos(lista)
+    }).catch(() => {})
+  }, [])
+
   useEffect(() => {
     setLoading(true)
     const params = { page, limit: 10 }
     const rId = filterRegion || regionId
     if (rId) params.regionId = rId
     if (search) params.search = search
-    if (filterCat !== 'Todas') params.category = filterCat
+    if (filterCat !== 'Todas') params.tipo = filterCat
     prestadoresService.getAll(params)
       .then((res) => {
         const data = res.prestadores || []
@@ -56,28 +64,23 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
   const getRegionName = (rId) => regions.find(r => r.REGI_COD === rId)?.REGI_NOM || ''
 
   if (loading) {
-    return <div className="module-container"><p className="module-subtitle">Cargando proveedores...</p></div>
+    return <div className="module-container"><p className="module-subtitle">Cargando prestadores...</p></div>
   }
 
   return (
     <div className="module-container">
       <div className="module-header">
         <div>
-          <h3 className="module-title">Directorio de Proveedores</h3>
+          <h3 className="module-title">Directorio de Prestadores de Servicios Turísticos</h3>
           <p className="module-subtitle">Comercios registrados - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
           <input type="text" className="module-search" placeholder="Buscar por nombre o RIF..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           <select className="module-filter-select" value={filterCat} onChange={e => { setFilterCat(e.target.value); setPage(1) }}>
-            <option value="Todas">Todas las categorías</option>
-            <option value="Alojamiento Turístico">Alojamiento Turístico</option>
-            <option value="Gastronomía Regional">Gastronomía Regional</option>
-            <option value="Agencia de Viajes">Agencia de Viajes</option>
-            <option value="Agencia de Turismo">Agencia de Turismo</option>
-            <option value="Transporte Turístico">Transporte Turístico</option>
-            <option value="Guía de Turismo">Guía de Turismo</option>
-            <option value="Entretenimiento">Entretenimiento</option>
-            <option value="Otros">Otros</option>
+            <option value="Todas">Todos los tipos</option>
+            {tipos.map(t => (
+              <option key={t.TIPR_CODV} value={t.TIPR_CODV}>{t.TIPR_NOM}</option>
+            ))}
           </select>
           <select className="module-filter-select" value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setPage(1) }}>
             <option value="">Todas las regiones</option>
@@ -87,7 +90,7 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
       </div>
 
       {providers.length === 0 ? (
-        <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No se encontraron proveedores con los filtros actuales.</div>
+        <div className="module-subtitle" style={{ textAlign: 'center', padding: '40px 0' }}>No se encontraron prestadores con los filtros actuales.</div>
       ) : (<>
         <div className="providers-grid">
           {providers.map(p => (
@@ -121,7 +124,7 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
         </div>
         {totalPages > 1 && (
           <div className="table-pagination-footer">
-            <span className="pagination-info">Página {page} de {totalPages} ({totalItems} proveedores)</span>
+            <span className="pagination-info">Página {page} de {totalPages} ({totalItems} prestadores)</span>
             <div className="pagination-controls">
               <button className="btn-page-arrow" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg></button>
               {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(p => (
@@ -142,11 +145,12 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
             </div>
             <div className="modal-body">
               <div className="modal-details-card">
-                <div className="detail-row"><span className="detail-label">Categoría:</span><span className="detail-value">{detail.category}</span></div>
+                <div className="detail-row"><span className="detail-label">Tipo:</span><span className="detail-value">{tipos.find(t => t.TIPR_CODV === detail.category)?.TIPR_NOM || detail.category}</span></div>
                 <div className="detail-row"><span className="detail-label">RIF:</span><span className="detail-value" style={{ fontFamily: 'monospace' }}>{detail.rif}</span></div>
                 <div className="detail-row"><span className="detail-label">Teléfono:</span><span className="detail-value">{detail.phone}</span></div>
                 <div className="detail-row"><span className="detail-label">Email:</span><span className="detail-value">{detail.email}</span></div>
                 <div className="detail-row"><span className="detail-label">Dirección:</span><span className="detail-value">{detail.address}</span></div>
+                {detail.descripcion && <div className="detail-row"><span className="detail-label">Descripción:</span><span className="detail-value">{detail.descripcion}</span></div>}
                 <div className="detail-row"><span className="detail-label">Estado:</span><span className="detail-value">{detail.estado || '—'}</span></div>
                 <div className="detail-row"><span className="detail-label">Región:</span><span className="detail-value">{getRegionName(detail.regionId)}</span></div>
                 <div className="detail-row"><span className="detail-label">Status:</span><span className="detail-value"><span className={`badge-status ${detail.status}`}>{detail.status === 'validado' ? 'APROBADO' : detail.status?.toUpperCase() || 'PENDIENTE'}</span></span></div>

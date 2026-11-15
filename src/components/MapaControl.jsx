@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, Tooltip, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import '../lib/leafletPlugins'
 import 'leaflet/dist/leaflet.css'
@@ -127,7 +127,7 @@ function HeatLayer({ points }) {
   return null
 }
 
-function ChoroplethLayer({ geo, counts, selected, onSelect }) {
+function ChoroplethLayer({ geo, counts, selected, onSelect, metricaNombre }) {
   const map = useMap()
   useEffect(() => {
     if (!geo) return undefined
@@ -145,13 +145,13 @@ function ChoroplethLayer({ geo, counts, selected, onSelect }) {
       onEachFeature: (feature, lyr) => {
         const name = feature?.properties?.shapeName ?? ''
         const n = counts.get(normName(name)) ?? 0
-        lyr.bindTooltip(`${name} · ${n} destino${n === 1 ? '' : 's'}`, { sticky: true })
+        lyr.bindTooltip(`${name} · ${n} ${metricaNombre}${n === 1 ? '' : 's'}`, { sticky: true })
         lyr.on('click', () => onSelect(name))
       },
     })
     map.addLayer(layer)
     return () => map.removeLayer(layer)
-  }, [geo, counts, selected, onSelect, map])
+  }, [geo, counts, selected, onSelect, metricaNombre, map])
   return null
 }
 
@@ -188,6 +188,8 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
   const [eventos, setEventos] = useState([])
   const [geo, setGeo] = useState(null)
   const [selectedState, setSelectedState] = useState(null)
+  // Métrica que colorea la coropleta (análisis multi-capa).
+  const [metrica, setMetrica] = useState('destinos')
   const [layers, setLayers] = useState({
     coropleta: true,
     destinos: true,
@@ -195,7 +197,17 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
     eventos: false,
     rutas: true,
     heat: false,
+    flujos: true,
   })
+
+  // Configuración de métricas de la coropleta (derivadas de datos reales).
+  const METRICAS = useMemo(() => ([
+    { key: 'destinos', label: 'Destinos por estado', nombre: 'destino' },
+    { key: 'prestadores', label: 'Prestadores por estado', nombre: 'prestador' },
+    { key: 'pendientes', label: 'Pendientes de validar', nombre: 'prestador pendiente' },
+    { key: 'eventos', label: 'Eventos por estado', nombre: 'evento' },
+    { key: 'rutas', label: 'Rutas que tocan el estado', nombre: 'ruta' },
+  ]), [])
 
   useEffect(() => {
     let cancelled = false
@@ -256,6 +268,82 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
 
   const countsDestinos = useMemo(() => countByEstado(destinos), [destinos])
   const countsPrestadores = useMemo(() => countByEstado(prestadores), [prestadores])
+
+  // Conteos por estado según la métrica activa de la coropleta.
+  const countsMetrica = useMemo(() => {
+    if (metrica === 'destinos') return countsDestinos
+    if (metrica === 'prestadores') return countsPrestadores
+    if (metrica === 'eventos') return countByEstado(eventos)
+    if (metrica === 'pendientes') {
+      return countByEstado(prestadores.filter((p) => normName(p.status) === 'pendiente'))
+    }
+    if (metrica === 'rutas') {
+      // Una ruta "toca" a todos los estados de sus paradas.
+      const map = new Map()
+      for (const r of rutas) {
+        const estados = new Set(
+          (r.destinos ?? []).map((s) => normName(s.estado)).filter(Boolean),
+        )
+        for (const e of estados) map.set(e, (map.get(e) ?? 0) + 1)
+      }
+      return map
+    }
+    return countsDestinos
+  }, [metrica, countsDestinos, countsPrestadores, eventos, prestadores, rutas])
+
+  const metricaActual = METRICAS.find((m) => m.key === metrica) ?? METRICAS[0]
+
+  // Centroides de cada estado a partir del GeoJSON (para dibujar flujos).
+  const centroides = useMemo(() => {
+    const map = new Map()
+    if (!geo?.features) return map
+    for (const f of geo.features) {
+      const name = normName(f.properties?.shapeName)
+      if (!name || map.has(name)) continue
+      try {
+        const center = L.geoJSON(f).getBounds().getCenter()
+        map.set(name, [center.lat, center.lng])
+      } catch {
+        /* geometría inválida: se omite el estado */
+      }
+    }
+    return map
+  }, [geo])
+
+  // Flujos entre estados: pares origen→destino derivados de la secuencia de
+  // destinos de cada ruta turística real. No hay datos inventados: si no hay
+  // rutas que conecten dos estados, no se dibuja corredor.
+  const flujos = useMemo(() => {
+    const pares = new Map()
+    const nombres = new Map()
+    for (const r of rutas) {
+      const stops = (r.destinos ?? []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      const estados = stops.map((s) => normName(s.estado)).filter(Boolean)
+      // nombre visible por estado (el primero que aparezca)
+      for (const s of stops) {
+        const k = normName(s.estado)
+        if (k && !nombres.has(k) && s.estado) nombres.set(k, s.estado)
+      }
+      for (let i = 0; i < estados.length - 1; i++) {
+        if (estados[i] === estados[i + 1]) continue
+        const key = [estados[i], estados[i + 1]].sort().join('→')
+        const entry = pares.get(key) ?? { a: estados[i], b: estados[i + 1], rutas: new Set() }
+        entry.rutas.add(r.id)
+        pares.set(key, entry)
+      }
+    }
+    return [...pares.values()]
+      .map((e) => ({
+        key: `${e.a}↔${e.b}`,
+        a: e.a,
+        b: e.b,
+        nombreA: nombres.get(e.a) ?? e.a,
+        nombreB: nombres.get(e.b) ?? e.b,
+        rutas: e.rutas.size,
+      }))
+      .filter((f) => centroides.has(f.a) && centroides.has(f.b))
+      .sort((x, y) => y.rutas - x.rutas)
+  }, [rutas, centroides])
 
   const topEstados = useMemo(() => {
     const names = new Set([...countsDestinos.keys(), ...countsPrestadores.keys()])
@@ -325,13 +413,17 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
 
   const rutasLines = useMemo(
     () => rutas.map((r, i) => {
-      const path = (r.destinos ?? [])
-        .slice()
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .filter((s) => Number.isFinite(Number(s.lat)) && Number(s.lat) !== 0)
-        .map((s) => [Number(s.lat), Number(s.lng)])
+      // Prioriza la geometría persistida (RUTA_GEO): polilínea real por
+      // carretera trazada desde el diseñador. Fallback: destinos ordenados.
+      const path = (r.geometry?.length >= 2
+        ? r.geometry
+        : (r.destinos ?? [])
+          .slice()
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .filter((s) => Number.isFinite(Number(s.lat)) && Number(s.lat) !== 0)
+          .map((s) => [Number(s.lat), Number(s.lng)]))
       return path.length > 1
-        ? { id: r.id, name: r.name, color: RUTA_COLORS[i % RUTA_COLORS.length], path }
+        ? { id: r.id, name: r.name, color: RUTA_COLORS[i % RUTA_COLORS.length], path, persistida: r.geometry?.length >= 2 }
         : null
     }).filter(Boolean),
     [rutas],
@@ -439,7 +531,7 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
           <div className="metric-data">
             <span className="metric-title">Rutas</span>
             <span className="metric-value">{rutas.length}</span>
-            <span className="metric-trend blue">⟐ {rutasLines.length} trazadas</span>
+            <span className="metric-trend blue">⟐ {rutas.filter((r) => r.geometry).length} con trazado persistido de {rutasLines.length} dibujadas</span>
           </div>
           <div className="metric-icon-box blue">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
@@ -455,6 +547,7 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
             { key: 'prestadores', label: 'Prestadores' },
             { key: 'rutas', label: 'Rutas' },
             { key: 'eventos', label: 'Eventos' },
+            { key: 'flujos', label: 'Flujos entre estados' },
             { key: 'heat', label: 'Heatmap' },
           ].map((item) => (
             <button
@@ -469,6 +562,17 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
         </div>
         {layers.coropleta && (
           <div className="mapa-legend">
+            <select
+              className="module-filter-select"
+              style={{ maxWidth: 220 }}
+              value={metrica}
+              onChange={(e) => setMetrica(e.target.value)}
+              title="Métrica de la coropleta"
+            >
+              {METRICAS.map((m) => (
+                <option key={m.key} value={m.key}>{m.label}</option>
+              ))}
+            </select>
             {CHOROPLETH_SCALE.map((step) => (
               <span key={step.label} className="mapa-legend-item">
                 <i style={{ background: step.color }} />
@@ -489,7 +593,13 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
               maxNativeZoom={offlineTileUrl ? 9 : undefined}
             />
             {layers.coropleta && geo && (
-              <ChoroplethLayer geo={geo} counts={countsDestinos} selected={selectedState} onSelect={setSelectedState} />
+              <ChoroplethLayer
+                geo={geo}
+                counts={countsMetrica}
+                selected={selectedState}
+                onSelect={setSelectedState}
+                metricaNombre={metricaActual.nombre}
+              />
             )}
             {layers.coropleta && selectedBounds && <FitBounds bounds={selectedBounds} />}
             {layers.destinos && <ClusterLayer items={destinoMarkers} />}
@@ -532,6 +642,32 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
                     }}
                   />
                 </g>
+              )
+            })}
+            {layers.flujos && flujos.map((flujo) => {
+              const from = centroides.get(flujo.a)
+              const to = centroides.get(flujo.b)
+              // Grosor del corredor según nº de rutas que conectan el par.
+              const weight = Math.min(1 + flujo.rutas * 1.5, 9)
+              return (
+                <Polyline
+                  key={flujo.key}
+                  positions={[from, to]}
+                  pathOptions={{
+                    color: '#7E2E90',
+                    weight,
+                    opacity: 0.55,
+                    dashArray: '10 10',
+                    lineCap: 'round',
+                    className: 'mapa-flujo',
+                  }}
+                >
+                  <Tooltip sticky>
+                    <strong>{flujo.nombreA} ↔ {flujo.nombreB}</strong>
+                    <br />
+                    {flujo.rutas} {flujo.rutas === 1 ? 'ruta conecta' : 'rutas conectan'} estos estados
+                  </Tooltip>
+                </Polyline>
               )
             })}
             {layers.heat && <HeatLayer points={heatPoints} />}

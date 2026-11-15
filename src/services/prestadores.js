@@ -4,18 +4,22 @@ function mapPrestador(p) {
   return {
     id: p.PROV_COD,
     name: p.PROV_NOM,
-    category: p.PROV_TSE === 'hosped' ? 'Alojamiento Turístico'
-      : p.PROV_TSE === 'rest' ? 'Gastronomía Regional'
-      : p.PROV_TSE === 'transp' ? 'Transporte Turístico'
-      : p.PROV_TSE === 'agencia' ? 'Agencia de Viajes'
-      : p.PROV_TSE === 'guia' ? 'Guía de Turismo'
-      : 'Otros',
+    category: p.PROV_TSE, // código del catálogo TM_TIPR (ej. 'hosped')
+    categoryLabel: p.TIPO_NOM || p.PROV_TSE,
     tipo: p.PROV_TSE,
     rif: p.PROV_RIF,
     phone: p.PROV_TEL,
     email: p.PROV_EMA,
     web: p.PROV_WEB,
     status: p.PROV_ESV === 'pend' ? 'pendiente' : p.PROV_ESV,
+    descripcion: p.PROV_DES,
+    horaApertura: p.PROV_HOA,
+    horaCierre: p.PROV_HOC,
+    diasAtencion: p.PROV_DIA ? p.PROV_DIA.split(',') : [],
+    sedes: p.PROV_SED,
+    capacidad: p.PROV_CAP,
+    servicios: p.PROV_SER ? p.PROV_SER.split(',') : [],
+    foto: p.PROV_FOT,
     municipalityId: p.PROV_MUN,
     municipality: p.TM_MUNIC?.MUNI_NOM,
     estado: p.TM_MUNIC?.TM_ESTADO?.ESTA_NOM,
@@ -38,6 +42,11 @@ function mapPrestador(p) {
       capacidad: p.TM_TRANS.TRAN_CPA,
       ruc: p.TM_TRANS.TRAN_RUC,
     } : null,
+    atrac: p.TM_ATRAC ? {
+      tipoAtraccion: p.TM_ATRAC.ATRA_TAT,
+      capacidad: p.TM_ATRAC.ATRA_CAP,
+      horario: p.TM_ATRAC.ATRA_HOR,
+    } : null,
     _raw: p,
   };
 }
@@ -54,6 +63,13 @@ export const prestadoresService = {
   getById: async (id) => {
     const res = await api.get(`/prestadores/${id}`);
     return mapPrestador(res.data || res);
+  },
+  // Catálogo de tipos de prestador (TM_TIPR). Con { todos: true } incluye
+  // inactivos (solo Administrador).
+  getTipos: async (params) => {
+    const res = await api.get('/prestadores/tipos', { params });
+    const data = res.data || res;
+    return data.tipos || [];
   },
   create: (data) => api.post('/prestadores', data),
   update: (id, data) => api.put(`/prestadores/${id}`, data),
