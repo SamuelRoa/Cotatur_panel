@@ -4,6 +4,8 @@ import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
 import { routingService } from '../services/routing'
 import { useFeedback } from './feedbackContext.js'
+import { generarReportePdf, traerTodo, usuarioActual } from '../lib/reportes.js'
+import BtnReporte from './BtnReporte.jsx'
 import BusquedaSelect from './BusquedaSelect.jsx'
 import RouteMapEditor from './RouteMapEditor.jsx'
 import { IconCheck } from './Icons.jsx'
@@ -24,6 +26,66 @@ const emptyNewDest = () => ({
 export default function RouteDesigner({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
   const loadErrorRef = useRef(false)
+  const [exportando, setExportando] = useState(false)
+
+  // Reporte PDF con identidad institucional: rutas completas según la región
+  const handleReporte = async () => {
+    if (exportando) return
+    setExportando(true)
+    toast.info('Se está generando el reporte de rutas. La descarga comenzará en unos segundos.', {
+      title: 'Descarga en curso',
+    })
+    try {
+      const rId = filterRegion || regionId
+      const lista = await traerTodo(rutasService.getAll, 'rutas', rId ? { regionId: rId } : {})
+      const conTrazado = lista.filter((r) => r.geometry).length
+      await generarReportePdf({
+        titulo: 'Reporte de Rutas Turísticas',
+        subtitulo: 'Corredores turísticos registrados, con distancias y estado de vialidad.',
+        region: regionName,
+        usuario: usuarioActual(),
+        resumen: [
+          { etiqueta: 'Total de rutas', valor: lista.length },
+          { etiqueta: 'Con trazado persistido', valor: conTrazado },
+          { etiqueta: 'Distancia promedio', valor: `${Math.round(lista.reduce((s, r) => s + (r.distanceKm || 0), 0) / (lista.length || 1))} km` },
+          { etiqueta: 'Vías en mal estado', valor: lista.filter((r) => String(r.roadStatus || '').toLowerCase().includes('mala')).length },
+        ],
+        secciones: [{
+          titulo: `Listado de rutas (${lista.length})`,
+          columnas: [
+            { titulo: 'Ruta', ancho: 2.2 },
+            { titulo: 'Tipo de turismo', ancho: 1.4 },
+            { titulo: 'Duración (h)', ancho: 1, alinear: 'derecha' },
+            { titulo: 'Distancia (km)', ancho: 1, alinear: 'derecha' },
+            { titulo: 'Vía', ancho: 0.9 },
+            { titulo: 'Paradas', ancho: 1.5 },
+          ],
+          filas: lista.map((r) => [
+            r.name,
+            r.tourismType || '—',
+            r.durationHours ?? '—',
+            r.distanceKm != null ? r.distanceKm : '—',
+            r.roadStatus || '—',
+            (r.destinos || []).map((d) => d.name).filter(Boolean).slice(0, 4).join(', ') +
+              ((r.destinos || []).length > 4 ? ` (+${r.destinos.length - 4})` : '') || '—',
+          ]),
+        }],
+        notas: [
+          'El trazado persistido corresponde a la polilínea real por carretera trazada con OSRM y guardada en RUTA_GEO.',
+          'Documento de uso interno; no distribuir fuera de la corporación.',
+        ],
+        firmas: ['Elaborado por', 'Revisado por', 'Aprobado por'],
+        nombreArchivo: `Reporte-Rutas-${new Date().toISOString().slice(0, 10)}.pdf`,
+      })
+      toast.success('El reporte de rutas se generó y descargó correctamente.', { title: 'Reporte listo' })
+    } catch (err) {
+      toast.error('No se pudo generar el reporte PDF. Detalle técnico: ' + (err.message || 'desconocido'), {
+        title: 'Descarga fallida',
+      })
+    } finally {
+      setExportando(false)
+    }
+  }
   const [routes, setRoutes] = useState([])
   const [loading, setLoading] = useState(true)
   const [availableDestinations, setAvailableDestinations] = useState([])
@@ -398,6 +460,7 @@ export default function RouteDesigner({ regionId = null, regionName = 'Visión N
           <p className="module-subtitle">Construcción y trazado de rutas turísticas - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
+          <BtnReporte onClick={handleReporte} cargando={exportando} />
           <select className="module-filter-select" value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setPage(1) }}>
             <option value="">Todas las regiones</option>
             {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}

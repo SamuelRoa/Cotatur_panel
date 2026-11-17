@@ -3,10 +3,75 @@ import { prestadoresService } from '../services/prestadores'
 import { geoService } from '../services/geo'
 import { CategoryIcon } from './Icons.jsx'
 import { useFeedback } from './feedbackContext.js'
+import { generarReportePdf, traerTodo, usuarioActual } from '../lib/reportes.js'
+import BtnReporte from './BtnReporte.jsx'
 
 export default function DirectorioProveedores({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast } = useFeedback()
   const loadErrorRef = useRef(false)
+  const [exportando, setExportando] = useState(false)
+
+  // Reporte PDF con identidad institucional: prestadores según filtros activos
+  const handleReporte = async () => {
+    if (exportando) return
+    setExportando(true)
+    toast.info('Se está generando el reporte de prestadores. La descarga comenzará en unos segundos.', {
+      title: 'Descarga en curso',
+    })
+    try {
+      const params = {}
+      const rId = filterRegion || regionId
+      if (rId) params.regionId = rId
+      if (search) params.search = search
+      if (filterCat !== 'Todas') params.tipo = filterCat
+      const lista = await traerTodo(prestadoresService.getAll, 'prestadores', params)
+      const porEstatus = (s) => lista.filter((p) => String(p.status || '').toLowerCase() === s).length
+      await generarReportePdf({
+        titulo: 'Reporte de Prestadores de Servicios Turísticos',
+        subtitulo: 'Directorio de comercios y servicios turísticos registrados ante la corporación.',
+        region: regionName,
+        usuario: usuarioActual(),
+        resumen: [
+          { etiqueta: 'Total de prestadores', valor: lista.length },
+          { etiqueta: 'Validados', valor: porEstatus('validado') },
+          { etiqueta: 'Pendientes', valor: porEstatus('pendiente') },
+          { etiqueta: 'Rechazados', valor: porEstatus('rechazado') },
+        ],
+        secciones: [{
+          titulo: `Listado de prestadores (${lista.length})`,
+          columnas: [
+            { titulo: 'Prestador', ancho: 2.4 },
+            { titulo: 'RIF', ancho: 1.4 },
+            { titulo: 'Tipo de servicio', ancho: 1.6 },
+            { titulo: 'Estado', ancho: 1.2 },
+            { titulo: 'Teléfono', ancho: 1.2 },
+            { titulo: 'Estatus', ancho: 1 },
+          ],
+          filas: lista.map((p) => [
+            p.name,
+            p.rif || '—',
+            tipos.find((t) => t.TIPR_CODV === p.category)?.TIPR_NOM || p.categoryLabel || p.category || '—',
+            p.estado || p.municipality || '—',
+            p.phone || '—',
+            String(p.status || 'pendiente').toUpperCase(),
+          ]),
+        }],
+        notas: [
+          'El estatus VALIDADO indica que el prestador posee Registro Turístico Nacional (RTN) verificado.',
+          'Documento de uso interno; no distribuir fuera de la corporación.',
+        ],
+        firmas: ['Elaborado por', 'Revisado por', 'Aprobado por'],
+        nombreArchivo: `Reporte-Prestadores-${new Date().toISOString().slice(0, 10)}.pdf`,
+      })
+      toast.success('El reporte de prestadores se generó y descargó correctamente.', { title: 'Reporte listo' })
+    } catch (err) {
+      toast.error('No se pudo generar el reporte PDF. Detalle técnico: ' + (err.message || 'desconocido'), {
+        title: 'Descarga fallida',
+      })
+    } finally {
+      setExportando(false)
+    }
+  }
   const [providers, setProviders] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -75,6 +140,7 @@ export default function DirectorioProveedores({ regionId = null, regionName = 'V
           <p className="module-subtitle">Comercios registrados - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
+          <BtnReporte onClick={handleReporte} cargando={exportando} />
           <input type="text" className="module-search" placeholder="Buscar por nombre o RIF..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           <select className="module-filter-select" value={filterCat} onChange={e => { setFilterCat(e.target.value); setPage(1) }}>
             <option value="Todas">Todos los tipos</option>

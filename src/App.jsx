@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { jsPDF } from 'jspdf'
 import './App.css'
 import cotaturLogo from './assets/cotatur_logo.png'
 import minturLogo from './assets/mintur_logo.png'
 import { ConnectionBanner } from './components/ConnectionBanner.jsx'
+import { generarReportePdf, usuarioActual } from './lib/reportes.js'
 
 // El logo depende de las credenciales: COTATUR solo si el usuario entra con
 // una cuenta @cotatur.gob.ve; en cualquier otro caso se muestra MINTUR.
@@ -353,90 +353,83 @@ function App() {
       // Pausa mínima para que React pinte el estado «Generando...» del botón
       // antes del trabajo síncrono de jsPDF (de lo contrario nunca se ve).
       await new Promise((resolve) => setTimeout(resolve, 120))
-      const pdf = new jsPDF('p', 'mm', 'a4')
-      const pageW = pdf.internal.pageSize.getWidth()
-      const marg = 14
-      const maxW = pageW - marg * 2
-      let y = 20
-
-      const title = (t, s = 16) => { pdf.setFontSize(s); pdf.setFont(undefined, 'bold'); pdf.text(t, marg, y); y += 6 }
-      const subtitle = (t) => { pdf.setFontSize(11); pdf.setFont(undefined, 'bold'); pdf.setTextColor(80, 80, 80); pdf.text(t, marg, y); y += 5; pdf.setTextColor(0, 0, 0) }
-      const line = (t) => { pdf.setFontSize(10); pdf.setFont(undefined, 'normal'); const lines = pdf.splitTextToSize(t, maxW); pdf.text(lines, marg, y); y += lines.length * 4.5 + 1 }
-      const blank = (h = 4) => { y += h }
-      const hr = () => { y += 2; pdf.setDrawColor(200, 200, 200); pdf.line(marg, y, pageW - marg, y); y += 4 }
-
-      const dateStr = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-
-      title('Reporte del Dashboard', 18)
-      line(`Sistema de Gesti\u00f3n Tur\u00edstica ${marcaPorCredencial(user?.email)}`)
-      line(`Generado: ${dateStr}${regionId ? ` — Regi\u00f3n: ${regionName}` : ' — Visi\u00f3n Nacional'}`)
-      blank()
-      hr()
-
-      subtitle('1. Resumen General')
-      line(`Destinos Georreferenciados: ${totalGeoreferencedCount}`)
-      line(`Prestadores Registrados: ${totalRegisteredCount}`)
-      line(`Eventos Programados: ${dashboardStats.eventos}`)
-      line(`Rutas Tur\u00edsticas: ${totalRutasCount}`)
-      blank()
-      hr()
-
-      subtitle('2. Prestadores por Categor\u00eda')
-      const catEntries = Object.entries(categoryCounts)
-      if (catEntries.length === 0) {
-        line('No hay prestadores registrados.')
-      } else {
-        for (const [cat, count] of catEntries) {
-          line(`${catLabels[cat] || cat}: ${count}`)
-        }
-      }
-      blank()
-      hr()
-
-      subtitle('3. Estado de Validaciones')
-      line(`Validados: ${validados}`)
-      line(`Rechazados: ${rechazados}`)
-      line(`Pendientes: ${pendientes}`)
-      blank()
-      hr()
-
-      subtitle('4. Destinos por Regi\u00f3n')
-      const destRegionEntries = Object.entries(destinosByRegion)
-      if (destRegionEntries.length === 0) {
-        line('No hay destinos registrados.')
-      } else {
-        for (const [reg, count] of destRegionEntries) {
-          line(`${reg}: ${count} destino${count !== 1 ? 's' : ''}`)
-        }
-      }
-      blank()
-      hr()
-
-      subtitle('5. Rutas por Regi\u00f3n')
-      const rutaRegionEntries = Object.entries(rutasByRegion)
-      if (rutaRegionEntries.length === 0) {
-        line('No hay rutas registradas.')
-      } else {
-        for (const [reg, count] of rutaRegionEntries) {
-          line(`${reg}: ${count} ruta${count !== 1 ? 's' : ''}`)
-        }
-      }
-      blank()
-      hr()
-
-      subtitle('6. Eventos')
-      line(`Este mes: ${eventosEsteMes}`)
-      line(`Pr\u00f3ximos: ${eventosProximos}`)
-      line(`Pasados: ${eventosPasados}`)
-      blank()
-      hr()
-
-      y += 4
-      pdf.setFontSize(8)
-      pdf.setTextColor(150, 150, 150)
-      pdf.text(`Reporte generado autom\u00e1ticamente por ${marcaPorCredencial(user?.email)} — ${new Date().toISOString().slice(0, 10)}`, marg, y)
-
-      pdf.save(`Reporte-${marcaPorCredencial(user?.email)}-${new Date().toISOString().slice(0, 10)}.pdf`)
+      await generarReportePdf({
+        titulo: 'Reporte General del Dashboard',
+        subtitulo: 'Resumen ejecutivo del Sistema de Gestión Turística del Ministerio del Poder Popular para el Turismo.',
+        marca: 'MINTUR',
+        region: regionId ? regionName : 'Visión Nacional',
+        usuario: usuarioActual() || user?.email || '',
+        resumen: [
+          { etiqueta: 'Destinos georreferenciados', valor: totalGeoreferencedCount },
+          { etiqueta: 'Prestadores registrados', valor: totalRegisteredCount },
+          { etiqueta: 'Eventos programados', valor: dashboardStats.eventos },
+          { etiqueta: 'Rutas turísticas', valor: totalRutasCount },
+        ],
+        secciones: [
+          {
+            titulo: '2. Prestadores por Categoría',
+            columnas: [
+              { titulo: 'Categoría', ancho: 3 },
+              { titulo: 'Cantidad', ancho: 1, alinear: 'derecha' },
+            ],
+            filas: Object.entries(categoryCounts).map(([cat, count]) => [
+              catLabels[cat] || cat,
+              count,
+            ]),
+          },
+          {
+            titulo: '3. Estado de Validaciones',
+            columnas: [
+              { titulo: 'Estado', ancho: 3 },
+              { titulo: 'Cantidad', ancho: 1, alinear: 'derecha' },
+            ],
+            filas: [
+              ['Validados', validados],
+              ['Rechazados', rechazados],
+              ['Pendientes', pendientes],
+            ],
+          },
+          {
+            titulo: '4. Destinos por Región',
+            columnas: [
+              { titulo: 'Región', ancho: 3 },
+              { titulo: 'Destinos', ancho: 1, alinear: 'derecha' },
+            ],
+            filas: Object.entries(destinosByRegion).map(([reg, count]) => [
+              reg,
+              `${count}`,
+            ]),
+          },
+          {
+            titulo: '5. Rutas por Región',
+            columnas: [
+              { titulo: 'Región', ancho: 3 },
+              { titulo: 'Rutas', ancho: 1, alinear: 'derecha' },
+            ],
+            filas: Object.entries(rutasByRegion).map(([reg, count]) => [
+              reg,
+              `${count}`,
+            ]),
+          },
+          {
+            titulo: '6. Eventos',
+            columnas: [
+              { titulo: 'Concepto', ancho: 3 },
+              { titulo: 'Cantidad', ancho: 1, alinear: 'derecha' },
+            ],
+            filas: [
+              ['Eventos este mes', eventosEsteMes],
+              ['Eventos próximos', eventosProximos],
+              ['Eventos pasados', eventosPasados],
+            ],
+          },
+        ],
+        notas: [
+          'Documento de uso interno; no distribuir fuera de la corporación.',
+        ],
+        firmas: ['Elaborado por', 'Revisado por', 'Aprobado por'],
+        nombreArchivo: `Reporte-MINTUR-${new Date().toISOString().slice(0, 10)}.pdf`,
+      })
       toast.success('El reporte se generó y descargó correctamente.', { title: 'Reporte listo' })
     } catch (err) {
       toast.error('No se pudo generar el reporte PDF. Detalle técnico: ' + (err.message || 'desconocido'), {

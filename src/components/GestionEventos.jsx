@@ -3,6 +3,8 @@ import { eventosService } from '../services/eventos'
 import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
 import { useFeedback } from './feedbackContext.js'
+import { generarReportePdf, traerTodo, usuarioActual } from '../lib/reportes.js'
+import BtnReporte from './BtnReporte.jsx'
 
 const eventTypes = ['Cultural', 'Feria', 'Gastronómico', 'Deportivo', 'Religioso', 'Musical']
 const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -17,6 +19,67 @@ function getMonthEvents(events, monthIndex) {
 export default function GestionEventos({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
   const loadErrorRef = useRef(false)
+  const [exportando, setExportando] = useState(false)
+
+  // Reporte PDF con identidad institucional: calendario de eventos completo
+  const handleReporte = async () => {
+    if (exportando) return
+    setExportando(true)
+    toast.info('Se está generando el reporte de eventos. La descarga comenzará en unos segundos.', {
+      title: 'Descarga en curso',
+    })
+    try {
+      const rId = filterRegion || regionId
+      const lista = await traerTodo(eventosService.getAll, 'eventos', rId ? { regionId: rId } : {})
+      const hoy = new Date().toISOString().slice(0, 10)
+      const proximos = lista.filter((e) => e.date && e.date.slice(0, 10) >= hoy).length
+      await generarReportePdf({
+        titulo: 'Reporte de Eventos Turísticos',
+        subtitulo: 'Calendario institucional de ferias, festividades y actividades programadas.',
+        region: regionName,
+        usuario: usuarioActual(),
+        resumen: [
+          { etiqueta: 'Total de eventos', valor: lista.length },
+          { etiqueta: 'Próximos', valor: proximos },
+          { etiqueta: 'Realizados', valor: lista.length - proximos },
+          { etiqueta: 'Tipos', valor: new Set(lista.map((e) => e.eventType).filter(Boolean)).size },
+        ],
+        secciones: [{
+          titulo: `Listado de eventos (${lista.length})`,
+          columnas: [
+            { titulo: 'Evento', ancho: 2.4 },
+            { titulo: 'Tipo', ancho: 1.2 },
+            { titulo: 'Fecha', ancho: 1.2 },
+            { titulo: 'Destino', ancho: 2 },
+            { titulo: 'Estado', ancho: 1.2 },
+          ],
+          filas: lista
+            .slice()
+            .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+            .map((e) => [
+              e.title,
+              e.eventType || '—',
+              e.date ? new Date(e.date).toLocaleDateString('es-VE') : '—',
+              e.destinoName || '—',
+              e.estado || '—',
+            ]),
+        }],
+        notas: [
+          'Las fechas corresponden a la fecha de inicio (EVEN_FI) del evento.',
+          'Documento de uso interno; no distribuir fuera de la corporación.',
+        ],
+        firmas: ['Elaborado por', 'Revisado por', 'Aprobado por'],
+        nombreArchivo: `Reporte-Eventos-${new Date().toISOString().slice(0, 10)}.pdf`,
+      })
+      toast.success('El reporte de eventos se generó y descargó correctamente.', { title: 'Reporte listo' })
+    } catch (err) {
+      toast.error('No se pudo generar el reporte PDF. Detalle técnico: ' + (err.message || 'desconocido'), {
+        title: 'Descarga fallida',
+      })
+    } finally {
+      setExportando(false)
+    }
+  }
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -194,6 +257,7 @@ export default function GestionEventos({ regionId = null, regionName = 'Visión 
           <p className="module-subtitle">Calendario y planificación de eventos - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
+          <BtnReporte onClick={handleReporte} cargando={exportando} />
           <select className="module-filter-select" value={filterRegion} onChange={e => setFilterRegion(e.target.value)}>
             <option value="">Todas las regiones</option>
             {regions.map(r => <option key={r.REGI_COD} value={r.REGI_COD}>{r.REGI_NOM}</option>)}

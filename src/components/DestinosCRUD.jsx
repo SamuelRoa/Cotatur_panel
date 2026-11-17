@@ -3,6 +3,8 @@ import { destinosService } from '../services/destinos'
 import { geoService } from '../services/geo'
 import { useFeedback } from './feedbackContext.js'
 import { normalizeGeoName } from '../lib/geoNames.js'
+import { generarReportePdf, traerTodo, usuarioActual } from '../lib/reportes.js'
+import BtnReporte from './BtnReporte.jsx'
 import BusquedaSelect from './BusquedaSelect.jsx'
 import { IconCheck } from './Icons.jsx'
 
@@ -28,6 +30,67 @@ const emptyForm = () => ({
 export default function DestinosCRUD({ regionId = null, regionName = 'Visión Nacional' }) {
   const { toast, confirm } = useFeedback()
   const loadErrorRef = useRef(false)
+  const [exportando, setExportando] = useState(false)
+
+  // Reporte PDF con identidad institucional: lista completa según filtros
+  const handleReporte = async () => {
+    if (exportando) return
+    setExportando(true)
+    toast.info('Se está generando el reporte de destinos. La descarga comenzará en unos segundos.', {
+      title: 'Descarga en curso',
+    })
+    try {
+      const params = {}
+      const rId = filterRegion || regionId
+      if (rId) params.regionId = rId
+      if (search) params.search = search
+      const lista = await traerTodo(destinosService.getAll, 'destinos', params)
+      await generarReportePdf({
+        titulo: 'Reporte de Destinos Turísticos',
+        subtitulo: 'Registro georreferenciado de atractivos turísticos de la República Bolivariana de Venezuela.',
+        region: regionName,
+        usuario: usuarioActual(),
+        resumen: [
+          { etiqueta: 'Total de destinos', valor: lista.length },
+          { etiqueta: 'Con coordenadas GPS', valor: lista.filter((d) => d.lat && d.lng).length },
+          { etiqueta: 'Destacados', valor: lista.filter((d) => d.destacado).length },
+          { etiqueta: 'Tipos de turismo', valor: new Set(lista.map((d) => d.tourismType).filter(Boolean)).size },
+        ],
+        secciones: [{
+          titulo: `Listado de destinos (${lista.length})`,
+          columnas: [
+            { titulo: 'Destino', ancho: 2.4 },
+            { titulo: 'Tipo de turismo', ancho: 1.4 },
+            { titulo: 'Estado', ancho: 1.2 },
+            { titulo: 'Municipio', ancho: 1.4 },
+            { titulo: 'Coordenadas', ancho: 1.6 },
+            { titulo: 'Vía', ancho: 0.9 },
+          ],
+          filas: lista.map((d) => [
+            d.name,
+            d.tourismType || '—',
+            d.estado || '—',
+            d.municipality || '—',
+            d.lat && d.lng ? `${Number(d.lat).toFixed(4)}, ${Number(d.lng).toFixed(4)}` : 'Sin GPS',
+            d.roadStatus || '—',
+          ]),
+        }],
+        notas: [
+          'Los destinos marcados como DESTACADO tienen prioridad de exhibición en el portal público.',
+          'Documento de uso interno; no distribuir fuera de la corporación.',
+        ],
+        firmas: ['Elaborado por', 'Revisado por', 'Aprobado por'],
+        nombreArchivo: `Reporte-Destinos-${new Date().toISOString().slice(0, 10)}.pdf`,
+      })
+      toast.success('El reporte de destinos se generó y descargó correctamente.', { title: 'Reporte listo' })
+    } catch (err) {
+      toast.error('No se pudo generar el reporte PDF. Detalle técnico: ' + (err.message || 'desconocido'), {
+        title: 'Descarga fallida',
+      })
+    } finally {
+      setExportando(false)
+    }
+  }
   const [destinos, setDestinos] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -283,6 +346,7 @@ export default function DestinosCRUD({ regionId = null, regionName = 'Visión Na
           <p className="module-subtitle">Registro y edición de atractivos turísticos - Contexto: {regionName}.</p>
         </div>
         <div className="module-header-actions">
+          <BtnReporte onClick={handleReporte} cargando={exportando} />
           <input type="text" className="module-search" placeholder="Buscar destino..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           <select className="module-filter-select" value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setPage(1) }}>
             <option value="">Todas las regiones</option>
