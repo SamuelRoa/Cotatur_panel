@@ -11,6 +11,7 @@ import { destinosService } from '../services/destinos'
 import { prestadoresService } from '../services/prestadores'
 import { rutasService } from '../services/rutas'
 import { eventosService } from '../services/eventos'
+import { metricasService } from '../services/metricas'
 import { useFeedback } from './feedbackContext.js'
 
 const CARTO_ATTRIBUTION =
@@ -31,6 +32,28 @@ const PRESTADOR_COLORS = {
 }
 
 const RUTA_COLORS = ['#F37021', '#7E2E90', '#0EA5E9', '#16A34A', '#DC2626', '#CA8A04', '#4F46E5', '#059669']
+
+// Períodos y tipos de evento del mapa de calor (telemetría TM_MEVEN).
+const PERIODOS_CALOR = [
+  { key: '7', label: 'Últimos 7 días', dias: 7 },
+  { key: '30', label: 'Últimos 30 días', dias: 30 },
+  { key: '90', label: 'Últimos 90 días', dias: 90 },
+  { key: '365', label: 'Último año', dias: 365 },
+]
+
+const TIPOS_EVENTO = [
+  { key: '', label: 'Todos los eventos' },
+  { key: 'ver_destino', label: 'Vistas de destinos' },
+  { key: 'ver_evento', label: 'Vistas de eventos' },
+  { key: 'busqueda', label: 'Búsquedas' },
+  { key: 'itinerario', label: 'Itinerarios generados' },
+  { key: 'ruta_trazada', label: 'Rutas trazadas' },
+  { key: 'pois_consulta', label: 'Servicios en ruta' },
+]
+
+const NOMBRE_TIPO = Object.fromEntries(TIPOS_EVENTO.filter((t) => t.key).map((t) => [t.key, t.label]))
+
+const CALOR_VACIO = { puntos: [], topEtiquetas: [], conteoTipos: [], total: 0 }
 
 function normName(value) {
   return String(value ?? '')
@@ -110,20 +133,25 @@ function ClusterLayer({ items }) {
   return null
 }
 
-function HeatLayer({ points }) {
+function HeatLayer({ points, dark }) {
   const map = useMap()
   useEffect(() => {
     if (!points.length) return undefined
+    // Peso normalizado al máximo: los hotspots dominan el gradiente.
+    const maxPeso = Math.max(...points.map((p) => p[2]), 1)
     const layer = L.heatLayer(points, {
-      radius: 26,
-      blur: 20,
-      maxZoom: 12,
-      max: 12,
-      gradient: { 0.2: '#bbf7d0', 0.5: '#4ade80', 0.8: '#16a34a', 1: '#15803d' },
+      radius: 30,
+      blur: 22,
+      maxZoom: 11,
+      minOpacity: 0.25,
+      max: maxPeso,
+      gradient: dark
+        ? { 0.2: '#7e22ce', 0.4: '#a855f7', 0.6: '#f37021', 0.8: '#fbbf24', 1: '#fef08a' }
+        : { 0.2: '#4ade80', 0.5: '#facc15', 0.75: '#f37021', 1: '#dc2626' },
     })
     map.addLayer(layer)
     return () => map.removeLayer(layer)
-  }, [map, points])
+  }, [map, points, dark])
   return null
 }
 
@@ -190,6 +218,11 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
   const [selectedState, setSelectedState] = useState(null)
   // Métrica que colorea la coropleta (análisis multi-capa).
   const [metrica, setMetrica] = useState('destinos')
+  // Mapa de calor de popularidad (telemetría anónima TM_MEVEN).
+  const [periodoCalor, setPeriodoCalor] = useState('30')
+  const [tipoCalor, setTipoCalor] = useState('')
+  const [calor, setCalor] = useState(CALOR_VACIO)
+  const [calorClave, setCalorClave] = useState('')
   const [layers, setLayers] = useState({
     coropleta: true,
     destinos: true,
@@ -219,6 +252,35 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
   }, [])
 
   const regionKey = regionId ? String(regionId) : 'nacional'
+
+  // Carga de la telemetría solo cuando la capa de calor está activa.
+  const claveCalor = `${periodoCalor}|${tipoCalor}`
+  useEffect(() => {
+    if (!layers.heat) return undefined
+    let cancelled = false
+    const dias = (PERIODOS_CALOR.find((p) => p.key === periodoCalor) ?? PERIODOS_CALOR[1]).dias
+    const desde = new Date(Date.now() - dias * 86400000).toISOString()
+    metricasService
+      .calor({ desde, tipo: tipoCalor || undefined })
+      .then((d) => {
+        if (!cancelled) setCalor(d)
+      })
+      .catch(() => {
+        if (!cancelled && !loadErrorRef.current) {
+          loadErrorRef.current = true
+          toast.error('No se pudo cargar el mapa de calor. Verifica tu conexión e intenta de nuevo.', {
+            title: 'Error de conexión',
+          })
+        }
+        if (!cancelled) setCalor(CALOR_VACIO)
+      })
+      .finally(() => {
+        if (!cancelled) setCalorClave(claveCalor)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [layers.heat, claveCalor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false
@@ -404,12 +466,8 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
     [eventosConCoords],
   )
 
-  const heatPoints = useMemo(() => {
-    const points = []
-    destinosConCoords.forEach((d) => points.push([Number(d.lat), Number(d.lng), 1]))
-    prestadoresConCoords.forEach((p) => points.push([Number(p.lat), Number(p.lng), 1]))
-    return points
-  }, [destinosConCoords, prestadoresConCoords])
+  // Puntos de calor = telemetría real de popularidad ([[lat, lng, peso]]).
+  const heatPoints = useMemo(() => calor.puntos, [calor.puntos])
 
   const rutasLines = useMemo(
     () => rutas.map((r, i) => {
@@ -548,7 +606,7 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
             { key: 'rutas', label: 'Rutas' },
             { key: 'eventos', label: 'Eventos' },
             { key: 'flujos', label: 'Flujos entre estados' },
-            { key: 'heat', label: 'Heatmap' },
+            { key: 'heat', label: 'Mapa de calor (visitas)' },
           ].map((item) => (
             <button
               key={item.key}
@@ -560,6 +618,43 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
             </button>
           ))}
         </div>
+        {layers.heat && (
+          <div className="mapa-legend">
+            <select
+              className="module-filter-select"
+              style={{ maxWidth: 170 }}
+              value={periodoCalor}
+              onChange={(e) => setPeriodoCalor(e.target.value)}
+              title="Período de análisis"
+            >
+              {PERIODOS_CALOR.map((p) => (
+                <option key={p.key} value={p.key}>{p.label}</option>
+              ))}
+            </select>
+            <select
+              className="module-filter-select"
+              style={{ maxWidth: 200 }}
+              value={tipoCalor}
+              onChange={(e) => setTipoCalor(e.target.value)}
+              title="Tipo de evento"
+            >
+              {TIPOS_EVENTO.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
+            </select>
+            {['Baja', 'Media', 'Alta', 'Muy alta'].map((nivel, i) => (
+              <span key={nivel} className="mapa-legend-item">
+                <i style={{ background: dark
+                  ? ['#7e22ce', '#f37021', '#fbbf24', '#fef08a'][i]
+                  : ['#4ade80', '#facc15', '#f37021', '#dc2626'][i] }} />
+                {nivel}
+              </span>
+            ))}
+            <span className="mapa-updated">
+              {calorClave !== claveCalor ? 'Cargando…' : `${calor.total} eventos · ${calor.puntos.length} puntos`}
+            </span>
+          </div>
+        )}
         {layers.coropleta && (
           <div className="mapa-legend">
             <select
@@ -670,11 +765,27 @@ export default function MapaControl({ regionId = null, regionName = 'Visión Nac
                 </Polyline>
               )
             })}
-            {layers.heat && <HeatLayer points={heatPoints} />}
+            {layers.heat && <HeatLayer points={heatPoints} dark={dark} />}
           </MapContainer>
         </div>
 
         <aside className="mapa-side">
+          {layers.heat && calor.topEtiquetas.length > 0 && !selectedData && (
+            <div className="mapa-side-card">
+              <div className="mapa-side-head">
+                <h4>Top destinos y búsquedas</h4>
+              </div>
+              {calor.topEtiquetas.slice(0, 10).map((t) => (
+                <div key={t.etiqueta} className="mapa-bar-row" style={{ cursor: 'default' }}>
+                  <span className="mapa-bar-label" title={t.etiqueta}>{t.etiqueta}</span>
+                  <span className="mapa-bar-track">
+                    <span className="mapa-bar-fill" style={{ width: `${(t.total / Math.max(...calor.topEtiquetas.map((x) => x.total), 1)) * 100}%` }} />
+                  </span>
+                  <span className="mapa-side-list-sub">{t.total}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {selectedData ? (
             <div className="mapa-side-card">
               <div className="mapa-side-head">
