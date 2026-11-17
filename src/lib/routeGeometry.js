@@ -20,6 +20,22 @@ function waypointsKey(path) {
   return path.map(([lat, lng]) => `${lng.toFixed(4)},${lat.toFixed(4)}`).join(';')
 }
 
+const ROUND = { lineCap: 'round', lineJoin: 'round' }
+
+/** Trazado activo: halo luminoso + cuerpo sólido + núcleo brillante. Nunca punteado. */
+export function routeLayers(color) {
+  return {
+    glow: { ...ROUND, color, weight: 16, opacity: 0.18, className: 'mapa-ruta-glow' },
+    body: { ...ROUND, color, weight: 7, opacity: 0.95 },
+    core: { ...ROUND, color: lightenHex(color, 0.55), weight: 2.5, opacity: 1 },
+  }
+}
+
+/** Trazado inactivo: línea sólida y discreta (nunca discontinua). */
+export function routeIdleOptions(color) {
+  return { ...ROUND, color, weight: 2.5, opacity: 0.45 }
+}
+
 // Trazado vía el proxy del backend (que llama a OSRM y, sin conexión,
 // devuelve línea recta). El cliente nunca dependerá del servicio externo.
 async function fetchOSRM(path, signal) {

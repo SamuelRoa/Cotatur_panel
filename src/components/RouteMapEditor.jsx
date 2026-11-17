@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import { MapContainer, TileLayer, Polyline, Marker, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
+import { routeLayers } from '../lib/routeGeometry'
+import AnimatedPolyline from './AnimatedPolyline'
 
 /**
  * Editor geográfico del diseñador de rutas:
@@ -36,11 +38,22 @@ function AjustarVista({ points, fitKey }) {
 
 function paradaIcon(numero, activa = true) {
   return L.divIcon({
-    html: `<div style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${activa ? COLOR : '#94a3b8'};color:#fff;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)">${numero ?? ''}</div>`,
+    html: `<div class="ruta-editor-pop" style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${activa ? COLOR : '#94a3b8'};color:#fff;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)">${numero ?? ''}</div>`,
     className: 'ruta-editor-parada',
     iconSize: [24, 24],
     iconAnchor: [12, 12],
   })
+}
+
+// Caché de íconos: evita re-crear los divIcon en cada render (lo que haría
+// re-disparar la animación de pop de las paradas).
+const paradaIconCache = new Map()
+const catalogoIconCache = new Map()
+
+function paradaIconCached(numero, activa = true) {
+  const key = `${numero ?? ''}|${activa ? 1 : 0}`
+  if (!paradaIconCache.has(key)) paradaIconCache.set(key, paradaIcon(numero, activa))
+  return paradaIconCache.get(key)
 }
 
 function catalogoIcon(color = '#16a34a') {
@@ -50,6 +63,11 @@ function catalogoIcon(color = '#16a34a') {
     iconSize: [12, 12],
     iconAnchor: [6, 6],
   })
+}
+
+function catalogoIconCached(color) {
+  if (!catalogoIconCache.has(color)) catalogoIconCache.set(color, catalogoIcon(color))
+  return catalogoIconCache.get(color)
 }
 
 export default function RouteMapEditor({
@@ -74,6 +92,12 @@ export default function RouteMapEditor({
 
   const lineaRecta = paradas.length >= 2 ? paradas : null
   const trazadoReal = geometria && geometria.length >= 2 ? geometria : null
+
+  // Clave del trazado real: cambia cuando llega una geometría nueva → re-anima el dibujado.
+  const geoKey = trazadoReal
+    ? `geo-${trazadoReal.length}-${trazadoReal[0][0].toFixed(3)},${trazadoReal[0][1].toFixed(3)}`
+    : ''
+  const layers = trazadoReal ? routeLayers(COLOR) : null
 
   return (
     <div
@@ -114,7 +138,7 @@ export default function RouteMapEditor({
             <Marker
               key={d.id}
               position={[lat, lng]}
-              icon={idx >= 0 ? paradaIcon(idx + 1) : catalogoIcon(roadColorOf(d.roadStatus))}
+              icon={idx >= 0 ? paradaIconCached(idx + 1) : catalogoIconCached(roadColorOf(d.roadStatus))}
               eventHandlers={{ click: () => onToggleParada(d) }}
             >
               <Popup>
@@ -138,18 +162,13 @@ export default function RouteMapEditor({
           />
         )}
 
-        {/* Trazado real por carretera */}
-        {trazadoReal && (
-          <>
-            <Polyline
-              positions={trazadoReal}
-              pathOptions={{ color: COLOR, weight: 10, opacity: 0.2, lineCap: 'round' }}
-            />
-            <Polyline
-              positions={trazadoReal}
-              pathOptions={{ color: COLOR, weight: 4, opacity: 0.95, lineCap: 'round' }}
-            />
-          </>
+        {/* Trazado real por carretera: se "dibuja" de origen a destino */}
+        {trazadoReal && layers && (
+          <g key="trazado-real">
+            <AnimatedPolyline positions={trazadoReal} pathOptions={layers.glow} animKey={geoKey} />
+            <AnimatedPolyline positions={trazadoReal} pathOptions={layers.body} animKey={geoKey} />
+            <AnimatedPolyline positions={trazadoReal} pathOptions={layers.core} animKey={geoKey} />
+          </g>
         )}
       </MapContainer>
 
@@ -175,6 +194,7 @@ export default function RouteMapEditor({
             : paradas.length >= 2
               ? 'Vista previa (línea recta)'
               : 'Clic en los destinos para armar la ruta · clic en el mapa vacío crea un destino'}
+        {trazando && <span className="ruta-editor-trazando-dot" />}
       </div>
     </div>
   )

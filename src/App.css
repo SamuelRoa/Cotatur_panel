@@ -4900,6 +4900,44 @@
   }
 }
 
+/* Editor de rutas: pop de las paradas al agregarse */
+.ruta-editor-pop {
+  animation: ruta-editor-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+@keyframes ruta-editor-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Editor de rutas: punto pulsante del estado "Trazando por carretera…" */
+.ruta-editor-trazando-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7e2e90;
+  margin-left: 7px;
+  vertical-align: middle;
+  animation: ruta-editor-dot 1s ease-in-out infinite;
+}
+@keyframes ruta-editor-dot {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 
 /* Popups Leaflet */
 .leaflet-popup-content-wrapper {
